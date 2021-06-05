@@ -1,0 +1,5 @@
+.idea
+*.pickle
+*.pdf
+*.doc
+*.docx
