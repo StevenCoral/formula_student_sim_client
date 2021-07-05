@@ -8,21 +8,21 @@ def clamp(my_value, min_value, max_value):
 
 class PidfControl:
     def __init__(self, sample_time):
-        self.kp = 1  # Proportional
-        self.ki = 0  # Integral
-        self.kd = 0  # Derivative
-        self.kf = 0  # Feed-forward
+        self.kp = 1.0  # Proportional
+        self.ki = 0.0  # Integral
+        self.kd = 0.0  # Derivative
+        self.kf = 0.0  # Feed-forward
 
         self.alpha = 0.5
         self.dt = sample_time
 
-        self.pos_prev = 0
-        self.vel_prev = 0
-        self.filtered_vel = 0
+        self.pos_prev = 0.0
+        self.vel_prev = 0.0
+        self.filtered_vel = 0.0
 
-        self.integral = 0
-        self.max_integral = 1
-        self.min_setpoint = 1
+        self.integral = 0.0
+        self.max_integral = 1.0
+        self.min_setpoint = 1.0
 
     def set_pidf(self, kp, ki, kd, kf):
         self.kp = kp  # Proportional
@@ -36,7 +36,7 @@ class PidfControl:
 
     # The measurement input is a position, hence it is differentiated before computing the error.
     # Units depend on caller function's use case.
-    def calculate_output(self, setpoint, pos, vel=None):
+    def compute_velocity(self, pos, vel=None):
         # In most cases we would want to supply position data and derive velocity from it.
         # But, in some cases we might have the velocity already available,
         # for example if we have a gyro attached to the shaft.
@@ -52,14 +52,14 @@ class PidfControl:
 
         self.vel_prev = self.filtered_vel
 
-        err = setpoint - self.filtered_vel
+    def compute_integral(self, err):
         self.integral += err * self.ki
         self.integral = clamp(self.integral, -self.max_integral, self.max_integral)  # Assuming symmetrical behaviour
 
-        return err
-
     def velocity_control(self, setpoint, pos, vel=None):
-        err = self.calculate_output(setpoint, pos, vel)
+        self.compute_velocity(pos, vel)
+        err = setpoint - self.filtered_vel
+        self.compute_integral(err)
         # We want to disable the integral term if the setpoint is too low to prevent currents:
         if abs(setpoint) < self.min_setpoint:
             self.integral = 0
@@ -67,6 +67,8 @@ class PidfControl:
         return output
 
     def position_control(self, setpoint, pos, vel=None):
-        err = self.calculate_output(setpoint, pos, vel)
+        self.compute_velocity(pos, vel)
+        err = setpoint - pos
+        self.compute_integral(err)
         output = err * self.kp + self.integral - self.kd * self.filtered_vel
         return output
