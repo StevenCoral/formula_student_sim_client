@@ -20,7 +20,6 @@ class PathFollower:
         self.k_vel = (self.max_velocity - self.min_velocity) / (self.path.curvature.max() + self.epsilon)
         self.k_steer = 1.0  # Control coefficient
         self.lookahead = 1.0  # meters
-        # self.lookahead_steer = 20  # meters
 
     def calc_ref_speed_steering(self, car_pos, car_vel, heading):
         # First we handle the desired steering angle [rad]:
