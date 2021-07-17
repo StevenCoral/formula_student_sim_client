@@ -3,4 +3,5 @@
 *.pdf
 *.doc
 *.docx
+*.pyc
 *pycache*
