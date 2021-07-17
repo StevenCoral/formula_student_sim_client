@@ -52,7 +52,6 @@ class PathFollower:
 
         return speed, steering_angle, closest_idx, closest_dist, closest_tangent, theta_e, theta_f
 
-
     @staticmethod
     def calc_dead_reckoning(car_pos, car_speed, heading, yaw_rate, delta_time):
         updated_heading = heading + delta_time * yaw_rate

@@ -127,7 +127,8 @@ def run_offline():
     outputs = np.array([], dtype=float)
     steer_emulator = WheelsPlant(0.01)
     steer_controller = PidfControl(0.01)
-    steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    steer_controller.set_pidf(600.0, 0.0, 35.0, 0.0)
     steer_controller.set_extrema(0.01, 1.0)
     steer_controller.alpha = 0.01
 

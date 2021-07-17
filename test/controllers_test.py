@@ -1,47 +1,39 @@
-#!/usr/bin/env python
+
 from spline_utils import PathSpline
 import numpy as np
 import airsim
+from matplotlib import pyplot as plt
+from pidf_controller import PidfControl
+from wheel_steer_emulator import WheelsPlant
 from scipy.spatial.transform import Rotation as Rot
 import time
 import pickle
-import multiprocessing
-from spatial_utils import set_initial_pose
-from high_level_control import PathFollower
-from pidf_controller import PidfControl
-from wheel_steer_emulator import WheelsPlant
+
+
+def set_initial_pose(airsim_client, desired_position, desired_heading):
+    initial_pose = airsim_client.simGetVehiclePose()
+    rot = Rot.from_euler('xyz', [0, 0, desired_heading], degrees=True)
+    quat = rot.as_quat()
+    initial_pose.orientation.x_val = quat[0]
+    initial_pose.orientation.y_val = quat[1]
+    initial_pose.orientation.z_val = quat[2]
+    initial_pose.orientation.w_val = quat[3]
+    initial_pose.position.x_val = desired_position[0]
+    initial_pose.position.y_val = desired_position[1]
+    # initial_pose.position.z_val = desired_position[2]
+    airsim_client.simSetVehiclePose(initial_pose, ignore_collison=True)
 
 
 if __name__ == '__main__':
-    # Define spline
-    x = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 6.00, -6.00, -18.00, -23.00, -23.00, -17.00, 0.0, 8.00])
-    y = np.array([20.00, 10.00, -10.00, -40.00, -60.00, -73.00, -78.00, -70.00, -38.00, 10.00, 30.00, 31.00, 27.00])
-    my_spline = PathSpline(x, y)
-    my_spline.generate_spline(0.1)
-    follow_handler = PathFollower(my_spline)
-    follow_handler.k_vel *= 2.0
-
-    # Define speed controller:
-    speed_controller = PidfControl(0.1)
-    # speed_controller.set_pidf(0.275, 0.3, 0.0, 0.044)
-    speed_controller.set_pidf(0.05, 0.0, 0.0, 0.044)
-    speed_controller.set_extrema(0.01, 0.01)
-    speed_controller.alpha = 0.01
-
-    # steer_controller = PidfControl(0.01)
-    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
-    # steer_controller.set_extrema(0.01, 1.0)
-    # steer_controller.alpha = 0.01
-    # steer_emulator = WheelsPlant(0.01)
-    # steer_input = multiprocessing.Value('f', 0.0)
-    # steer_output = multiprocessing.Value('f', 0.0)
-    # is_active = multiprocessing.Value('B', int(1))
-    # steering_thread = multiprocessing.Process(target=steer_emulator.async_steering,
-    #                                           args=(steer_controller, steer_input, steer_output, is_active),
-    #                                           daemon=True)
-    # steering_thread.start()
-    # time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
-
+    duration = 3
+    timeline = np.linspace(0, duration, duration*100)
+    inputs = np.array([], dtype=float)
+    outputs = np.array([], dtype=float)
+    wheels_plant = WheelsPlant(0.01)
+    compensator = PidfControl(0.01)
+    compensator.set_pidf(900, 0, 42, 0)
+    compensator.set_extrema(0.01, 1)
+    compensator.alpha = 0.5
     # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" in unreal:
     starting_x = 10.0
     starting_y = 20.0
@@ -71,19 +63,12 @@ if __name__ == '__main__':
         rot = Rot.from_quat(quat)
         curr_heading = rot.as_euler('xyz', degrees=False)[2]
         # desired_speed, desired_steer = follow_handler.calc_ref_speed_steering(curr_pos, curr_vel, curr_heading)
-        desired_speed, desired_steer, idx, distance, tangent, teta_e, teta_f = follow_handler.calc_ref_speed_steering(curr_pos, curr_vel, curr_heading)
+        desired_speed, desired_steer, idx, distance, tangent, teta_e, teta_f = follow_handler.calc_ref_speed_steering(
+            curr_pos, curr_vel, curr_heading)
+        desired_steer /= follow_handler.max_steering
 
-        # Close a control loop over the throttle/speed of the vehicle:
-        throttle_command = speed_controller.velocity_control(desired_speed, 0, curr_vel)
-
-        # Close a control loop over the steering angle.
-        # TODO can be done without multiprocessing, by increasing the rate of the control loop.
-        # steer_input.value = desired_steerS
-        # steer_command = steer_output.value
-        # steer_command /= follow_handler.max_steering  # Convert range to [-1, 1]
-        desired_steer /= follow_handler.max_steering  # Convert range to [-1, 1]
-
-        car_controls.throttle = throttle_command
+        # car_controls.throttle = 0.6
+        car_controls.throttle = desired_speed / 16.0  # Something like...
         car_controls.steering = -desired_steer
         client.setCarControls(car_controls)
 
