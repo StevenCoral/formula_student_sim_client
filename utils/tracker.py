@@ -10,7 +10,7 @@ class ObjectTracker:
         self.active = False
         self.can_deactivate = False
         self.proximity_distance = 0.5
-        self.activation_thresh = 5
+        self.activation_thresh = 3
         self.deactivation_thresh = 3
 
         self.max_detections = 10

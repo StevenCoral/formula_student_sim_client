@@ -4,31 +4,19 @@ from matplotlib import pyplot as plt
 import time
 from spline_utils import PathSpline
 
-with open('dbscan_session.pickle', 'rb') as handle:
-    dbscan_data = pickle.load(handle)
+with open('tracker_session.pickle', 'rb') as handle:
+    tracker_data = pickle.load(handle)
 
-all_segments = dbscan_data['all_segments']
-all_centroids = dbscan_data['all_centroids']
-del all_segments
-del dbscan_data
+tracked_points = np.ndarray(shape=(0, 2))
+for tracked_obj in tracker_data:
+    if tracked_obj.active:
+        tracked_points = np.append(tracked_points, tracked_obj.position[0:2].reshape(1, 2), axis=0)
 
 fig, ax = plt.subplots(1, 1)
-for idx in range(len(all_centroids)):
-    if all_centroids[idx]:
-        curr_segments = np.ndarray(shape=(0, 3))
-        curr_centroids = np.ndarray(shape=(0, 3))
-        for curr_frame in all_centroids[idx]:
-            # debug_seg = all_segments[idx][curr_frame]
-            # curr_segments = np.append(curr_segments, all_segments[idx][curr_frame], axis=0)
-            # debug_cent = all_centroids[idx][curr_frame].reshape(1, 3)
-            curr_centroids = np.append(curr_centroids, all_centroids[idx][curr_frame].reshape(1, 3), axis=0)
-
-        # ax.plot(curr_segments[:, 0], curr_segments[:, 1], '.b')
-        ax.plot(curr_centroids[:, 0], curr_centroids[:, 1], 'or')
-        ax.grid(True)
-        plt.xlim([0, 20])
-        plt.ylim([-5, 5])
-        fig.show()
-        a = 5
-        ax.clear()
-
+ax.plot(tracked_points[:, 0], tracked_points[:, 1], 'or')
+ax.grid(True)
+ax.axis('equal')
+# plt.xlim([-20, 20])
+# plt.ylim([0, 40])
+fig.show()
+a = 5
