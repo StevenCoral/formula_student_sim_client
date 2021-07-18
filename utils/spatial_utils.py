@@ -9,6 +9,7 @@ import numpy as np
 # so this must also be taken into account.
 # ENG or eng refers to an Engineering coordinate system (right-handed),
 # with X pointing forward, Y pointing left and Z pointing up.
+# Cascaded multiplications add up from the left-hand side.
 
 bottom_row = np.array([0.0, 0.0, 0.0, 1.0]).reshape(1, 4)
 

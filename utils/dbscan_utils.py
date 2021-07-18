@@ -23,10 +23,7 @@ def cluster_extent(cluster):
     return np.amax(cluster, axis=0) - np.amin(cluster, axis=0)
 
 
-def collate_segmentation(dbscan_obj, max_extent=0.5):
-    # core_samples_mask = np.zeros_like(dbscan_obj.labels_, dtype=bool)
-    # core_samples_mask[dbscan_obj.core_sample_indices_] = True
-
+def collate_segmentation(dbscan_obj, max_extent=1.0):
     # Sort-out labels:
     labels = dbscan_obj.labels_
     unique_labels = set(labels)
@@ -34,18 +31,21 @@ def collate_segmentation(dbscan_obj, max_extent=0.5):
         unique_labels.remove(-1)  # No use for noise (label = -1)
 
     # Separate data into segments:
-    segments = {}
-    centroids = {}
+    segments = []
+    centroids = []
+    relevant_labels = []
     for idx in unique_labels:
-        # class_member_mask = (labels == idx)
-        # group = filtered_pc[class_member_mask & core_samples_mask]
+
         class_member_mask = (labels[dbscan_obj.core_sample_indices_] == idx)
         group = dbscan_obj.components_[class_member_mask]
         extents = cluster_extent(group)
-        if group.size > 0 and np.linalg.norm(extents) < max_extent:
-            segments[idx] = group
-            centroids[idx] = np.mean(group, axis=0)
 
-    return segments, centroids
+        # Filtering out every cluster whose XY spreads too much (larger than the target):
+        if group.size > 0 and np.linalg.norm(extents) < max_extent:
+            segments.append(group)
+            centroids.append(np.mean(group, axis=0))
+            relevant_labels.append(idx)
+
+    return segments, centroids, relevant_labels
 
 
