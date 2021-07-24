@@ -34,6 +34,17 @@ def convert_unreal_airsim(pos, rot):
     return pos, rot
 
 
+def eng_to_camera(pos):
+    # Converts from engineering to camera coordinate systems without messing with rotation matrix calculations.
+    new_pos = np.array([-pos[1], -pos[2], pos[0]])
+    return new_pos
+
+
+def camera_to_eng(pos):
+    new_pos = np.array([pos[2], -pos[0], -pos[1]])
+    return new_pos
+
+
 def set_airsim_pose(airsim_client, desired_position, desired_rot, inherit_z=True):
     # Input is in ENG coordinate system!
     # Converts to Airsim and sends to client.
@@ -56,19 +67,6 @@ def set_airsim_pose(airsim_client, desired_position, desired_rot, inherit_z=True
     initial_pose.position.y_val = pos[1]
     initial_pose.position.z_val = pos[2]
     airsim_client.simSetVehiclePose(initial_pose, ignore_collison=True)
-
-
-#TODO delete function below
-def extract_position_from_airsim(pos, pos_offset=None):
-    # Input should be a Vector3r() object directly from Airsim.
-    # Output is in Airsim coordinate system.
-    if pos_offset is None:
-        offset_x = 0.0
-        offset_y = 0.0
-    else:
-        offset_x = pos_offset[0]
-        offset_y = pos_offset[1]
-    return np.array([pos.x_val + offset_x, pos.y_val + offset_y, pos.z_val])
 
 
 def extract_rotation_from_airsim(orientation):

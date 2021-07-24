@@ -3,6 +3,7 @@ from scipy import interpolate
 from matplotlib import pyplot as plt
 
 
+#TODO change to ClosedSpline
 class PathSpline:
     def __init__(self, x_points, y_points):
         self.xb = x_points  # Base points' x values
@@ -42,7 +43,7 @@ class PathSpline:
         self.path_length = total_length
 
     def _calculate_spline(self, num_idx):
-        # Fits splines to x=f(u) and y=g(u), treating both as periodic. also note that s=0
+        # Fits splines to x=f(u) and y=g(u), treating both as periodic. Also note that s=0
         # is needed in order to force the spline fit to pass through all the input points.
         tck, u = interpolate.splprep([self.xb, self.yb], s=0, per=True)
 

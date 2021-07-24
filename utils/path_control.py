@@ -6,6 +6,7 @@ import time
 import pickle
 
 
+#TODO change to StanleyFollower
 class PathFollower:
     def __init__(self, path_spline):
 
