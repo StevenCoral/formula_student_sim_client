@@ -19,6 +19,8 @@ class AirsimCamera:
         self.fov = cam_fov
         self.pos = cam_pos
         self.rot = cam_rot
+        self.WIDTH_DIST_COEFF = 40
+        self.HEIGHT_DIST_COEFF = 50
         self.intrinsic_matrix = self.generate_intrinsics(cam_width, cam_height, cam_fov)
         # Transformation matrix is calculated in ENG coordinate system!
         self.tf_matrix = spatial_utils.tf_matrix_from_airsim_pose(cam_pos, cam_rot)
@@ -46,8 +48,9 @@ class AirsimCamera:
         pixel, dist = self.project_vector_to_pixel(vector)
         pixel = np.round(pixel).astype(np.int32)
         numpy_indices = np.flip(pixel)
-        rect_h = np.round(50 / dist).astype(np.int32)  # Heuristic, half-size of desired rectangle height
-        rect_w = np.round(40 / dist).astype(np.int32)  # Heuristic, half-size of desired rectangle width
+        # Heuristic, half-size of desired rectangle bounds:
+        rect_h = np.round(self.HEIGHT_DIST_COEFF / dist).astype(np.int32)
+        rect_w = np.round(self.WIDTH_DIST_COEFF / dist).astype(np.int32)
         h_range = [numpy_indices[0] - rect_h, numpy_indices[0] + rect_h]
         w_range = [numpy_indices[1] - rect_w, numpy_indices[1] + rect_w]
         return h_range, w_range

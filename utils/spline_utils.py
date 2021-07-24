@@ -3,7 +3,6 @@ from scipy import interpolate
 from matplotlib import pyplot as plt
 
 
-#TODO change to ClosedSpline
 class PathSpline:
     def __init__(self, x_points, y_points):
         self.xb = x_points  # Base points' x values
@@ -16,17 +15,17 @@ class PathSpline:
         self.array_length = int(0)
         self.last_idx = int(0)
 
-    def generate_spline(self, amount, meters=True, sum_quant=10000):
+    def generate_spline(self, amount, meters=True, smoothing=0, summation=10000):
         # High-level API function to be used for generating a path spline.
         # If meters is True, amount will be roughly the distance between 2 points (indices),
         # Otherwise, amount is the actual number of indices the spline will have.
 
-        # Measure the path length regardless of the "amount" choice:
-        x_temp, y_temp, c_temp = self._calculate_spline(sum_quant)
+        # Measure the path length using "summation" number of points regardless of the "amount" choice:
+        x_temp, y_temp, c_temp = self._calculate_spline(summation, smoothing)
         total_length = 0.0
         x_diff = np.diff(x_temp)
         y_diff = np.diff(y_temp)
-        for idx in range(sum_quant - 1):
+        for idx in range(summation - 1):
             total_length += np.sqrt(x_diff[idx] ** 2 + y_diff[idx] ** 2)
 
         if meters:
@@ -36,18 +35,18 @@ class PathSpline:
             num_idx = int(amount)
             self.meters_per_index = total_length / amount
 
-        self.xi, self.yi, self.curvature = self._calculate_spline(num_idx)
+        self.xi, self.yi, self.curvature = self._calculate_spline(num_idx, smoothing)
 
         self.array_length = len(self.xi)
         self.last_idx = self.array_length - 1
         self.path_length = total_length
 
-    def _calculate_spline(self, num_idx):
+    def _calculate_spline(self, num_idx, smoothing=0):
         # Fits splines to x=f(u) and y=g(u), treating both as periodic. Also note that s=0
         # is needed in order to force the spline fit to pass through all the input points.
-        tck, u = interpolate.splprep([self.xb, self.yb], s=0, per=True)
+        tck, u = interpolate.splprep([self.xb, self.yb], s=smoothing, per=True)
 
-        # Evaluate the spline fits for 1000 evenly spaced distance values
+        # Evaluate the spline fits for 10000 evenly spaced distance values
         xi, yi = interpolate.splev(np.linspace(0, 1, num_idx), tck)
 
         ci = np.zeros(num_idx)

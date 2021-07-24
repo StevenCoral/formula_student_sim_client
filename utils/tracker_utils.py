@@ -51,12 +51,12 @@ class ConeTracker(ObjectTracker):
     COLOR_ORANGE = 3
     HUE_MIN_BLUE = 104
     HUE_MAX_BLUE = 114
-    SAT_MIN_YELLOW = 120
-    SAT_MAX_YELLOW = 160
+    SAT_MIN_BLUE = 190
+    SAT_MAX_BLUE = 250
+    SAT_MIN_YELLOW = 110
+    SAT_MAX_YELLOW = 170
     HUE_MIN_YELLOW = 22
     HUE_MAX_YELLOW = 32
-    SAT_MIN_BLUE = 200
-    SAT_MAX_BLUE = 240
 
     def __init__(self, initial_position):
         super().__init__(initial_position)

@@ -2,16 +2,12 @@ from spline_utils import PathSpline
 import numpy as np
 import airsim
 from scipy.spatial.transform import Rotation as Rot
+import spatial_utils
 import time
 import pickle
 
 
-class PurePursuit:
-    def __init__(self, path_points):
-        self.path = path_points
-
-
-class StanleyMethod:
+class PathFollower:
     def __init__(self, path_spline):
 
         self.path = path_spline
@@ -65,17 +61,20 @@ class StanleyMethod:
 
 
 if __name__ == '__main__':
+    # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" in unreal:
+    starting_x = 10.0
+    starting_y = 20.0
+
     x = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 6.00, -6.00, -18.00, -23.00, -23.00, -17.00, 0.0, 8.00])
     y = np.array([20.00, 10.00, -10.00, -40.00, -60.00, -73.00, -78.00, -70.00, -38.00, 10.00, 30.00, 31.00, 27.00])
+
+    x -= starting_x
+    y -= starting_y
 
     my_spline = PathSpline(x, y)
     my_spline.generate_spline(0.1)
     follow_handler = PathFollower(my_spline)
     follow_handler.k_vel *= 2.0
-
-    # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" in unreal:
-    starting_x = 10.0
-    starting_y = 20.0
 
     # connect to the AirSim simulator
     client = airsim.CarClient()

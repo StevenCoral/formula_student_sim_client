@@ -35,8 +35,8 @@ yellow = np.uint8([[[0, 255, 255]]])
 hsv_yellow = cv2.cvtColor(yellow, cv2.COLOR_BGR2HSV)
 print('yellow:', hsv_yellow)
 
-left_cam = camera_utils.AirsimCamera(640, 360, 90, [2, -0.5, -0.5], [-40.0, -10.0, 0])
-right_cam = camera_utils.AirsimCamera(640, 360, 90, [2, 0.5, -0.5], [40.0, -10.0, 0])
+left_cam = camera_utils.AirsimCamera(640, 360, 80, [2, -0.5, -0.5], [-40.0, -10.0, 0])
+right_cam = camera_utils.AirsimCamera(640, 360, 80, [2, 0.5, -0.5], [40.0, -10.0, 0])
 lidar_pos = [2, 0, -0.1]
 lidar_rot = [0, 0, 0]
 
@@ -56,10 +56,10 @@ dummy_tracker = tracker_utils.ConeTracker
 tic = time.time()
 for curr_centroid in centroid_data['right']:
     curr_centroid[2] -= 0.05
-    hsv_image = right_cam.get_cropped_hsv(right_cv_img, curr_centroid)
+    hsv_image, success = right_cam.get_cropped_hsv(right_cv_img, curr_centroid)
     cone_color = tracker_utils.estimate_cone_color(hsv_image)
-    # h_range, w_range = right_cam.generate_cropping_indices(curr_centroid)
-    # right_cv_img = cv2.rectangle(right_cv_img, [w_range[1], h_range[1]], [w_range[0], h_range[0]], (0, 0, 255), 1)
+    h_range, w_range = right_cam.generate_cropping_indices(curr_centroid)
+    right_cv_img = cv2.rectangle(right_cv_img, [w_range[1], h_range[1]], [w_range[0], h_range[0]], (0, 0, 255), 1)
 
     print('right:', cone_color)
 
@@ -80,13 +80,13 @@ for curr_centroid in centroid_data['right']:
 #     # right_cv_img = cv2.rectangle(right_cv_img, [130, 200], [430, 330], (0, 0, 255), 1)
 #     pass
 
-for curr_centroid in centroid_data['left']:
-    curr_centroid[2] -= 0.05
-    hsv_image = left_cam.get_cropped_hsv(left_cv_img, curr_centroid)
-    cone_color = tracker_utils.estimate_cone_color(hsv_image)
+# for curr_centroid in centroid_data['left']:
+#     curr_centroid[2] -= 0.05
+#     hsv_image = left_cam.get_cropped_hsv(left_cv_img, curr_centroid)
+#     cone_color = tracker_utils.estimate_cone_color(hsv_image)
     # h_range, w_range = left_cam.generate_cropping_indices(curr_centroid)
     # left_cv_img = cv2.rectangle(left_cv_img, [w_range[1], h_range[1]], [w_range[0], h_range[0]], (0, 0, 255), 1)
-    print('left:', cone_color)
+    # print('left:', cone_color)
     # pixel, dist = left_cam.project_vector_to_pixel(curr_centroid)
     # pixel = np.round(pixel).astype(np.uint32)
     # indices = np.flip(pixel)
@@ -104,9 +104,9 @@ for curr_centroid in centroid_data['left']:
     # # left_cv_img = cv2.rectangle(left_cv_img, [270, 330], [180, 270], (0, 0, 255), 1)
     pass
 
-print('time it took:', time.time() - tic)
-# enlarged_image = cv2.resize(right_cv_img, (1280, 720))
-enlarged_image = cv2.resize(left_cv_img, (1280, 720))
+# print('time it took:', time.time() - tic)
+enlarged_image = cv2.resize(right_cv_img, (1280, 720))
+# enlarged_image = cv2.resize(left_cv_img, (1280, 720))
 cv2.imshow('test', enlarged_image)
 cv2.waitKey()
 a = 5
