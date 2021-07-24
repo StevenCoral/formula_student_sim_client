@@ -67,10 +67,10 @@ if __name__ == '__main__':
     spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
     time.sleep(1.0)
 
-    # client.enableApiControl(True)
-    # car_controls = airsim.CarControls()
-    # car_controls.throttle = 0.1
-    # client.setCarControls(car_controls)
+    client.enableApiControl(True)
+    car_controls = airsim.CarControls()
+    car_controls.throttle = 0.1
+    client.setCarControls(car_controls)
 
     right_trackers = []
     left_trackers = []
@@ -78,12 +78,14 @@ if __name__ == '__main__':
     left_cam_centroids = []
 
     tracked_cones = []
+    pursuit_points = [np.array([0.0, 0.0, 0.0])]
     start_time = time.time()
     idx = 0
-    while time.time() - start_time < 60:
+    while time.time() - start_time < 120:
         tic = time.time()
         vehicle_pose = client.simGetVehiclePose()
         vehicle_to_map = spatial_utils.tf_matrix_from_airsim_object(vehicle_pose)
+        map_to_vehicle = np.linalg.inv(vehicle_to_map)
 
         lidar_to_map = np.matmul(vehicle_to_map, lidar_to_vehicle)
 
@@ -95,6 +97,7 @@ if __name__ == '__main__':
         if filtered_pc.size > 0:
             db = DBSCAN(eps=0.3, min_samples=3).fit(filtered_pc)
             curr_segments, curr_centroids, curr_labels = dbscan_utils.collate_segmentation(db, 1.0)
+            # Sort centroids by distance from vehicle for goal point extraction later.
             curr_centroids.sort(key=lambda x: np.linalg.norm(x))
 
             responses = client.simGetImages([airsim.ImageRequest("LeftCam", 0, False, False),
@@ -137,13 +140,40 @@ if __name__ == '__main__':
                         new_centroid.determine_color(hsv_image)
                         tracked_cones.append(new_centroid)
 
+            # Create following points:
+            last_blue = None
+            last_yellow = None
+            for curr_cone in reversed(tracked_cones):
+                if curr_cone.active:
+                    if last_blue is None and curr_cone.color == curr_cone.COLOR_BLUE:
+                        last_blue = curr_cone.position
+                    if last_yellow is None and curr_cone.color == curr_cone.COLOR_YELLOW:
+                        last_yellow = curr_cone.position
+                    if last_blue is not None and last_yellow is not None:
+                        last_pursuit = (last_blue + last_yellow) / 2
+                        # Only add to the list if it is a "new point"
+                        if np.linalg.norm(pursuit_points[-1] - last_pursuit) > 1.0:
+                            pursuit_points.append(last_pursuit)
+                        break
+
+        if len(pursuit_points) > 1:
+            pursuit_map = np.append(pursuit_points[-1], 1)
+            pursuit_vehicle = np.matmul(map_to_vehicle, pursuit_map)[:3]
+            desired_steer = -0.5 * pursuit_vehicle[1] / max(1.0, np.linalg.norm(pursuit_vehicle))
+        else:
+            desired_steer = 0.0  # Move straight if we havent picked up any points yet.
+
+        car_controls.steering = desired_steer
+        client.setCarControls(car_controls)
+
         idx += 1
         toc = time.time()
-        print(toc-tic)
-        time.sleep(0.1)
+        print(idx, toc-tic)
+        time.sleep(0.05)
 
+    tracked_objects = {'cones': tracked_cones, 'pursuit': pursuit_points}
     with open('tracker_session.pickle', 'wb') as pickle_file:
-        pickle.dump(tracked_cones, pickle_file)
+        pickle.dump(tracked_objects, pickle_file)
 
     a=5
     # tracked_centroids = {'left': left_trackers, 'right': right_trackers}

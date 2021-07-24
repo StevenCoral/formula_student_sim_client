@@ -46,8 +46,8 @@ class AirsimCamera:
         pixel, dist = self.project_vector_to_pixel(vector)
         pixel = np.round(pixel).astype(np.int32)
         numpy_indices = np.flip(pixel)
-        rect_h = np.round(40 / dist).astype(np.int32)  # Heuristic, half-size of desired rectangle height
-        rect_w = np.round(30 / dist).astype(np.int32)  # Heuristic, half-size of desired rectangle width
+        rect_h = np.round(50 / dist).astype(np.int32)  # Heuristic, half-size of desired rectangle height
+        rect_w = np.round(40 / dist).astype(np.int32)  # Heuristic, half-size of desired rectangle width
         h_range = [numpy_indices[0] - rect_h, numpy_indices[0] + rect_h]
         w_range = [numpy_indices[1] - rect_w, numpy_indices[1] + rect_w]
         return h_range, w_range

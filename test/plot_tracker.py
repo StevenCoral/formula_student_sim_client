@@ -11,7 +11,7 @@ with open('tracker_session.pickle', 'rb') as handle:
 problematic = 0
 left_points = np.ndarray(shape=(0, 2))
 right_points = np.ndarray(shape=(0, 2))
-for tracked_obj in tracker_data:
+for tracked_obj in tracker_data['cones']:
     if tracked_obj.active:
         if tracked_obj.color == tracker_utils.ConeTracker.COLOR_BLUE:
             left_points = np.append(left_points, tracked_obj.position[0:2].reshape(1, 2), axis=0)
@@ -23,6 +23,11 @@ for tracked_obj in tracker_data:
     else:
         print('inactive cone at pos:', tracked_obj.position[0:2])
         problematic += 1
+
+pursuit_points = np.ndarray(shape=(0, 2))
+for tracked_obj in tracker_data['pursuit']:
+    pursuit_points = np.append(pursuit_points, tracked_obj[:2].reshape(1, 2), axis=0)
+
 
 # left_points = np.ndarray(shape=(0, 2))
 # for tracked_obj in tracker_data['left']:
@@ -37,6 +42,7 @@ for tracked_obj in tracker_data:
 fig, ax = plt.subplots(1, 1)
 ax.plot(right_points[:, 0], right_points[:, 1], 'or')
 ax.plot(left_points[:, 0], left_points[:, 1], 'ob')
+ax.plot(pursuit_points[:, 0], pursuit_points[:, 1], 'o')
 ax.grid(True)
 ax.axis('equal')
 # plt.xlim([-20, 20])

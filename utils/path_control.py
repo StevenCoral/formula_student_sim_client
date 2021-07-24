@@ -6,8 +6,12 @@ import time
 import pickle
 
 
-#TODO change to StanleyFollower
-class PathFollower:
+class PurePursuit:
+    def __init__(self, path_points):
+        self.path = path_points
+
+
+class StanleyMethod:
     def __init__(self, path_spline):
 
         self.path = path_spline
