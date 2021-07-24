@@ -72,20 +72,26 @@ if __name__ == '__main__':
     car_controls.throttle = 0.1
     client.setCarControls(car_controls)
 
-    right_trackers = []
-    left_trackers = []
-    right_cam_centroids = []
-    left_cam_centroids = []
+    loop_trigger = False
+    leaving_distance = 10.0
+    entering_distance = 6.0
 
     tracked_cones = []
     pursuit_points = [np.array([0.0, 0.0, 0.0])]
     start_time = time.time()
     idx = 0
-    while time.time() - start_time < 120:
+    while time.time() - start_time < 200:
         tic = time.time()
         vehicle_pose = client.simGetVehiclePose()
         vehicle_to_map = spatial_utils.tf_matrix_from_airsim_object(vehicle_pose)
         map_to_vehicle = np.linalg.inv(vehicle_to_map)
+        distance_from_start = np.linalg.norm(vehicle_to_map[0:2, 3])
+        if not loop_trigger:
+            if distance_from_start > leaving_distance:
+                loop_trigger = True
+        else:
+            if distance_from_start < entering_distance:
+                break
 
         lidar_to_map = np.matmul(vehicle_to_map, lidar_to_vehicle)
 
@@ -174,14 +180,7 @@ if __name__ == '__main__':
     tracked_objects = {'cones': tracked_cones, 'pursuit': pursuit_points}
     with open('tracker_session.pickle', 'wb') as pickle_file:
         pickle.dump(tracked_objects, pickle_file)
+    print('pickle saved')
 
     a=5
-    # tracked_centroids = {'left': left_trackers, 'right': right_trackers}
-    # camera_centroids = {'left': left_cam_centroids, 'right': right_cam_centroids}
-    #
-    # with open('tracker_session.pickle', 'wb') as pickle_file:
-    #     pickle.dump(tracked_centroids, pickle_file)
-    #
-    # with open('camera_centroids.pickle', 'wb') as pickle_file:
-    #     pickle.dump(camera_centroids, pickle_file)
-    # print('saved pickle data')
+
