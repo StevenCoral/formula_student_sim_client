@@ -19,8 +19,8 @@ class AirsimCamera:
         self.fov = cam_fov
         self.pos = cam_pos
         self.rot = cam_rot
-        self.WIDTH_DIST_COEFF = 40
-        self.HEIGHT_DIST_COEFF = 50
+        self.WIDTH_DIST_COEFF = 60
+        self.HEIGHT_DIST_COEFF = 70
         self.intrinsic_matrix = self.generate_intrinsics(cam_width, cam_height, cam_fov)
         # Transformation matrix is calculated in ENG coordinate system!
         self.tf_matrix = spatial_utils.tf_matrix_from_airsim_pose(cam_pos, cam_rot)
@@ -53,16 +53,19 @@ class AirsimCamera:
         rect_w = np.round(self.WIDTH_DIST_COEFF / dist).astype(np.int32)
         h_range = [numpy_indices[0] - rect_h, numpy_indices[0] + rect_h]
         w_range = [numpy_indices[1] - rect_w, numpy_indices[1] + rect_w]
-        return h_range, w_range
+        return h_range, w_range, numpy_indices
 
     def get_cropped_hsv(self, image, vector):
-        h_range, w_range = self.generate_cropping_indices(vector)
+        h_range, w_range, midpoint = self.generate_cropping_indices(vector)
         h_range = np.clip(h_range, 0, image.shape[0])
         w_range = np.clip(w_range, 0, image.shape[1])
-        if h_range[1] <= h_range[0] or w_range[1] <= w_range[0]:
-            return np.empty(shape=(1, 1)), False
-        else:
+        # Condition below reduces the AOI of the camera to 10-90% of the full image.
+        # This makes it less prone (but not immune) to cones being out-of-frame.
+        if self.height * 0.1 < midpoint[0] < self.height * 0.9 and self.width * 0.1 < midpoint[1] < self.width * 0.9:
             return cv2.cvtColor(image[h_range[0]:h_range[1], w_range[0]:w_range[1], :], cv2.COLOR_BGR2HSV), True
+        else:
+            return np.empty(shape=(1, 1)), False
+
 
 
 def get_bgr_image(airsim_response):

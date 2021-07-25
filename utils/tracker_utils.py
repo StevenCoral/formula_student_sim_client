@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 
 class ObjectTracker:
@@ -66,6 +67,9 @@ class ConeTracker(ObjectTracker):
         resulting_color = estimate_cone_color(hsv_image)
         if resulting_color != self.COLOR_UNKNOWN:
             self.color = resulting_color
+        else:
+            pass
+        return resulting_color
         # No "else". If undecisive, whether color is currently unknown or not - leave it be.
 
     @classmethod

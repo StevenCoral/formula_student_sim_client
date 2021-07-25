@@ -61,11 +61,11 @@ def mapping_loop():
 
     tracked_cones = []
     pursuit_points = [np.array([0.0, 0.0, 0.0])]
-    lookahead_distance = 6.0
+    min_lookahead_distance = 2.0
+    max_lookahead_distance = 6.0
     start_time = time.time()
 
     while time.time() - start_time < 300:
-        tic = time.time()
         vehicle_pose = client.simGetVehiclePose()
         vehicle_to_map = spatial_utils.tf_matrix_from_airsim_object(vehicle_pose)
         map_to_vehicle = np.linalg.inv(vehicle_to_map)
@@ -79,54 +79,61 @@ def mapping_loop():
             if distance_from_start < entering_distance:
                 break
 
+        # To minimize discrepancy between data sources, all acquisitions must be made before processing:
+        responses = client.simGetImages([airsim.ImageRequest("LeftCam", 0, False, False),
+                                         airsim.ImageRequest("RightCam", 0, False, False)])
+        left_image = camera_utils.get_bgr_image(responses[0])
+        right_image = camera_utils.get_bgr_image(responses[1])
+
         # DBSCAN filtering is done on the sensor-frame
         point_cloud = aggregate_detections(client)  # Airsim's stupid lidar implementation requires aggregation
         filtered_pc = dbscan_utils.filter_cloud(point_cloud, 3.0, 10.0, -0.5, 1.0)
 
         # Only is SOME clusters were found:
         if filtered_pc.size > 0:
+            # Cluster centroids, filter them by extent and then sort them by ascending distance:
             db = DBSCAN(eps=0.3, min_samples=3).fit(filtered_pc)
             curr_segments, curr_centroids, curr_labels = dbscan_utils.collate_segmentation(db, 1.0)
-            # Sort centroids by distance from vehicle for target point extraction later.
             curr_centroids.sort(key=lambda x: np.linalg.norm(x))
-
-            responses = client.simGetImages([airsim.ImageRequest("LeftCam", 0, False, False),
-                                             airsim.ImageRequest("RightCam", 0, False, False)])
 
             # camera_utils.save_img(responses[0], os.path.join(image_dest, 'left_' + str(idx) + '.png'))
             # camera_utils.save_img(responses[1], os.path.join(image_dest, 'right_' + str(idx) + '.png'))
-            left_image = camera_utils.get_bgr_image(responses[0])
-            right_image = camera_utils.get_bgr_image(responses[1])
 
             # Go through the DBSCAN centroids of the current frame:
             for centroid_airsim in curr_centroids:
                 centroid_eng, dump = spatial_utils.convert_eng_airsim(centroid_airsim, [0, 0, 0])
-                centroid_local = np.append(centroid_eng, 1)
-                centroid_global = np.matmul(lidar_to_map, centroid_local)[:3]
-                centroid_vehicle = np.matmul(lidar_to_vehicle, centroid_local)[:3]
+                centroid_lidar = np.append(centroid_eng, 1)
+                centroid_global = np.matmul(lidar_to_map, centroid_lidar)[:3]
+                # We must track yellow and blue cones within the common (global) frame of reference.
 
-                if centroid_vehicle[1] > 0:  # Positive y means left side.
-                    centroid_camera = np.matmul(lidar_to_left_cam, centroid_local)[:3]
-                    hsv_image, hsv_success = left_cam.get_cropped_hsv(left_image, centroid_camera)
-                else:
-                    centroid_camera = np.matmul(lidar_to_right_cam, centroid_local)[:3]
-                    hsv_image, hsv_success = right_cam.get_cropped_hsv(right_image, centroid_camera)
+                centroid_exists = False
+                # Compare them against all the known tracked objects:
+                for centroid in tracked_cones:
+                    if centroid.check_proximity(centroid_global):
+                        centroid_exists = True
+                        centroid.process_detection(centroid_global)
+                        if centroid.active:
+                            # Estimate color only for active cones, within camera frustum.
+                            # Color estimation is done in the camera frame of reference.
+                            centroid_vehicle = np.matmul(lidar_to_vehicle, centroid_lidar)[:3]
+                            if centroid_vehicle[1] > 0:  # Positive y means left side.
+                                centroid_camera = np.matmul(lidar_to_left_cam, centroid_lidar)[:3]
+                                # hsv_image, hsv_success = left_cam.get_cropped_hsv(left_image, centroid_camera)
+                                relevant_image = left_image
+                                relevant_camera = left_cam
+                            else:
+                                centroid_camera = np.matmul(lidar_to_right_cam, centroid_lidar)[:3]
+                                # hsv_image, hsv_success = right_cam.get_cropped_hsv(right_image, centroid_camera)
+                                relevant_image = right_image
+                                relevant_camera = right_cam
 
-                if hsv_success:  # Only if cone is within camera frustum!
-                    centroid_exists = False
-                    # Compare them against all the known tracked objects:
-                    for centroid in tracked_cones:
-                        # We must track yellow and blue cones within the common (global) frame of reference:
-                        if centroid.check_proximity(centroid_global):
-                            centroid_exists = True
-                            centroid.process_detection(centroid_global)
-                            centroid.determine_color(hsv_image)
-                            break
-                    # If no centroid is close enough to an existing one, create a new tracker instance:
-                    if not centroid_exists:
-                        new_centroid = tracker_utils.ConeTracker(centroid_global)
-                        new_centroid.determine_color(hsv_image)
-                        tracked_cones.append(new_centroid)
+                            hsv_image, hsv_success = relevant_camera.get_cropped_hsv(relevant_image, centroid_camera)
+                            color_dump = centroid.determine_color(hsv_image) if hsv_success else 0
+                        break
+                # If no centroid is close enough to an existing one, create a new tracker instance:
+                if not centroid_exists:
+                    new_centroid = tracker_utils.ConeTracker(centroid_global)
+                    tracked_cones.append(new_centroid)
 
             # Create pursuit points:
             last_blue = None
@@ -144,33 +151,30 @@ def mapping_loop():
                             pursuit_points.append(last_pursuit)
                         break
 
+        # Scanning pursuit points from newest (and farthest) backwards.
+        # If the point is farther than the max lookahead distance, keep scanning.
+        # If we reached a point that is too close, keep moving straight until (hopefully) a new one gets within range.
         if len(pursuit_points) > 2:
             for point in reversed(pursuit_points):
                 # Compute pursuit point in vehicle coordinates:
                 pursuit_map = np.append(point, 1)
                 pursuit_vehicle = np.matmul(map_to_vehicle, pursuit_map)[:3]
-                if np.linalg.norm(pursuit_vehicle) > lookahead_distance:
-                    pursuit_candidate = pursuit_vehicle
-                else:
+                pursuit_distance = np.linalg.norm(pursuit_vehicle)
+                if pursuit_distance < max_lookahead_distance:
                     break
-            desired_steer = -0.5 * np.arctan(pursuit_vehicle[1] / pursuit_vehicle[0])
+            if pursuit_distance > min_lookahead_distance:
+                desired_steer = -0.5 * np.arctan(pursuit_vehicle[1] / pursuit_vehicle[0])
+            else:
+                desired_steer = 0.0
 
         else:
             desired_steer = 0.0  # Move straight if we haven't picked up any points yet.
-
-        # if len(pursuit_points) > 2:  # Two steps from the list's end yields a closer lookahead distance
-        #     # Compute pursuit point in vehicle coordinates:
-        #     pursuit_map = np.append(pursuit_points[-2], 1)
-        #     pursuit_vehicle = np.matmul(map_to_vehicle, pursuit_map)[:3]
-        #     desired_steer = -0.5 * np.arctan(pursuit_vehicle[1] / pursuit_vehicle[0])
-        # else:
-        #     desired_steer = 0.0  # Move straight if we haven't picked up any points yet.
 
         car_controls.steering = desired_steer
         client.setCarControls(car_controls)
 
         toc = time.time()
-        print(toc - start_time)
+        # print(toc - start_time)
         time.sleep(0.05)
 
     if save_data:
