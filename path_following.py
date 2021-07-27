@@ -12,24 +12,27 @@ from pidf_controller import PidfControl
 from wheel_steer_emulator import WheelsPlant
 
 
-def following_loop(client):
+def following_loop(client, spline_obj=None):
 
     save_data = False
 
-    # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" location in unreal:
-    starting_x = 10.0
-    starting_y = 20.0
+    if spline_obj is None:
+        # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" location in unreal:
+        starting_x = 10.0
+        starting_y = 20.0
 
-    # Define spline
-    x = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 6.00, -6.00, -18.00, -23.00, -23.00, -17.00, 0.0, 8.00])
-    y = np.array([20.00, 10.00, -10.00, -40.00, -60.00, -73.00, -78.00, -70.00, -38.00, 10.00, 30.00, 31.00, 27.00])
-    x -= starting_x
-    y -= starting_y
-    y *= -1
+        # Define spline
+        x = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 6.00, -6.00, -18.00, -23.00, -23.00, -17.00, 0.0, 8.00])
+        y = np.array([20.00, 10.00, -10.00, -40.00, -60.00, -73.00, -78.00, -70.00, -38.00, 10.00, 30.00, 31.00, 27.00])
+        x -= starting_x
+        y -= starting_y
+        y *= -1
 
-    my_spline = PathSpline(x, y)
-    my_spline.generate_spline(0.1)
-    follow_handler = PathFollower(my_spline)
+        spline_obj = PathSpline(x, y)
+        spline_obj.generate_spline(0.1)
+        spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
+
+    follow_handler = PathFollower(spline_obj)
     follow_handler.k_vel *= 2.0
 
     # Define speed controller:
@@ -53,20 +56,12 @@ def following_loop(client):
     # steering_thread.start()
     # time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
 
-    # connect to the AirSim simulator
-    # client = airsim.CarClient()
-    # client.confirmConnection()
-    # client.enableApiControl(True)
-    spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
-    time.sleep(1.0)
-    # client.enableApiControl(False)
-
     car_controls = airsim.CarControls()
     car_data = np.ndarray(shape=(0, 4))
     control_data = np.ndarray(shape=(0, 8))
 
     start_time = time.time()
-    while time.time() - start_time < 90.0:
+    while time.time() - start_time < 60.0:
         car_state = client.getCarState()
         car_pose = client.simGetVehiclePose()
         # kinematics estimated is the airsim dead reckoning!
