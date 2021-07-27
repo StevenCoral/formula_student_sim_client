@@ -65,7 +65,7 @@ if __name__ == '__main__':
     starting_x = 10.0
     starting_y = 20.0
 
-    x = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 6.00, -6.00, -18.00, -23.00, -23.00, -17.00, 0.0, 8.00])
+    x = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 6.00, -6.00, -19.00, -23.00, -23.00, -17.00, 0.0, 8.00])
     y = np.array([20.00, 10.00, -10.00, -40.00, -60.00, -73.00, -78.00, -70.00, -38.00, 10.00, 30.00, 31.00, 27.00])
 
     x -= starting_x
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     client = airsim.CarClient()
     client.confirmConnection()
     client.enableApiControl(True)
-    set_initial_pose(client, [0.0, 0.0], -90.0)
+    spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
     time.sleep(1.0)
     # client.enableApiControl(False)
 

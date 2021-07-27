@@ -18,12 +18,6 @@ class ObjectTracker:
         self.num_misdetections = 0
 
     def process_detection(self, new_point):
-        # if not self.check_proximity(new_point):
-        #     if self.can_deactivate:
-        #         self.num_misdetections += 1
-        #         # More deactivation logic
-        #     return False
-        # else:
         detection = np.array(new_point)
         self.detections.append(detection)
         self.num_detections += 1
@@ -35,7 +29,6 @@ class ObjectTracker:
         if self.num_detections >= self.activation_thresh:
             self.active = True
         pass
-        # return True
 
     def check_proximity(self, point):
         # Assuming point is a size-3 numpy array in the order of x-y-z.
@@ -79,11 +72,6 @@ class ConeTracker(ObjectTracker):
                                                        hsv_image[:, :, 1] < cls.SAT_MAX_YELLOW),
                                         np.logical_and(hsv_image[:, :, 1] > cls.SAT_MIN_BLUE,
                                                        hsv_image[:, :, 1] < cls.SAT_MAX_BLUE))
-        # plt.hist(cropped_hsv[:, :, 1].flatten(), 180)
-        # plt.show()
-        # num_pixels = cropped_hsv.shape[0] * cropped_hsv.shape[1]
-        # histogram = np.histogram(cropped_hsv[:, :, 0], 180, [0, 180])[0]
-        # debug = cropped_hsv[saturation_mask, 1]
         # Use masked cells to create a Hue histogram so we can differentiate between cone colors:
         histogram = np.bincount(hsv_image[saturation_mask, 0].flatten(), minlength=180)  # Faster than np.histogram()
         return histogram

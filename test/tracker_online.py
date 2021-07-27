@@ -23,7 +23,7 @@ def aggregate_detections(airsim_client, iterations=2):
     return np.reshape(pointcloud, (int(pointcloud.shape[0] / 3), 3))
 
 
-def mapping_loop():
+def mapping_loop(client):
     image_dest = 'D:\\MscProject\\BGR_client\\images'
     save_data = True
 
@@ -45,14 +45,15 @@ def mapping_loop():
     lidar_to_right_cam = np.matmul(np.linalg.inv(right_cam_to_vehicle), lidar_to_vehicle)
 
     # connect to the AirSim simulator
-    client = airsim.CarClient()
-    client.confirmConnection()
+    # client = airsim.CarClient()
+    # client.confirmConnection()
+    # client.enableApiControl(True)
+
     spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
     time.sleep(1.0)
 
-    client.enableApiControl(True)
     car_controls = airsim.CarControls()
-    car_controls.throttle = 0.1
+    car_controls.throttle = 0.15
     client.setCarControls(car_controls)
 
     loop_trigger = False
@@ -187,4 +188,6 @@ def mapping_loop():
 
 
 if __name__ == '__main__':
-    useless = mapping_loop()
+    airsim_client = airsim.CarClient()
+    airsim_client.confirmConnection()
+    useless = mapping_loop(airsim_client)

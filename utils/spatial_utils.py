@@ -79,14 +79,13 @@ def extract_rotation_from_airsim(orientation):
     return Rotation.from_quat(quaternion).as_euler('ZYX', degrees=True)
 
 
-def extract_kinematics_from_airsim(actor_pose):
+def extract_pose_from_airsim(actor_pose):
     # Input is an Airsim Pose() object.
     # Output is in ENG coordinate system.
     position = np.array([actor_pose.position.x_val, actor_pose.position.y_val, actor_pose.position.z_val])
-    speed = actor_pose.speed
     rotation = extract_rotation_from_airsim(actor_pose.orientation)
     pos, rot = convert_eng_airsim(position, rotation)
-    return pos, rot, speed
+    return pos, rot
 
 
 def tf_matrix_from_eng_pose(position, rotation):
@@ -133,6 +132,6 @@ if __name__ == "__main__":
 
     set_airsim_pose(client, [0.0, 20.0], [45.0, 0, 0])
     test_pose = client.simGetVehiclePose()
-    tf_mat = tf_matrix_from_airsim(test_pose)
+    tf_mat = tf_matrix_from_airsim_pose(test_pose)
     tf_2 = tf_matrix_from_eng_pose([1, 2, 3], 40, 20)
     pass
