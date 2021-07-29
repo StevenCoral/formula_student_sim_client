@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import interpolate
 from matplotlib import pyplot as plt
+import tracker_utils
 
 
 class PathSpline:
@@ -44,7 +45,7 @@ class PathSpline:
     def _calculate_spline(self, num_idx, smoothing=0):
         # Fits splines to x=f(u) and y=g(u), treating both as periodic. Also note that s=0
         # is needed in order to force the spline fit to pass through all the input points.
-        tck, u = interpolate.splprep([self.xb, self.yb], s=smoothing, per=True)
+        tck, u = interpolate.splprep([self.xb, self.yb], s=smoothing, per=True, quiet=1)
 
         # Evaluate the spline fits for 10000 evenly spaced distance values
         xi, yi = interpolate.splev(np.linspace(0, 1, num_idx), tck)
@@ -97,6 +98,34 @@ class PathSpline:
         if curvature < 1e-3:  # Meaningless value for our purpose
             curvature = 0
         return curvature
+
+
+def generate_path_points(mapping_data):
+    #TODO advance left and right and disqualify by distance to avoid assumption at the bottom of this function
+    left_points = np.ndarray(shape=(0, 2))
+    right_points = np.ndarray(shape=(0, 2))
+    unknown_points = np.ndarray(shape=(0, 2))
+    for tracked_obj in mapping_data:
+        if tracked_obj.active:
+            point = tracked_obj.position[0:2]
+            if tracked_obj.color == tracker_utils.ConeTracker.COLOR_BLUE:
+                left_points = np.append(left_points, point.reshape(1, 2), axis=0)
+            elif tracked_obj.color == tracker_utils.ConeTracker.COLOR_YELLOW:
+                right_points = np.append(right_points, point.reshape(1, 2), axis=0)
+            else:
+                left_dist = np.linalg.norm(left_points - point, axis=1)
+                right_dist = np.linalg.norm(right_points - point, axis=1)
+                if np.min(left_dist) < np.min(right_dist):
+                    left_points = np.append(left_points, point.reshape(1, 2), axis=0)
+                else:
+                    right_points = np.append(right_points, point.reshape(1, 2), axis=0)
+                unknown_points = np.append(unknown_points, point.reshape(1, 2), axis=0)
+
+    # Assuming somewhat equal cone detections on each side!
+    min_length = min(left_points.shape[0], right_points.shape[0])
+    track_points = (left_points[:min_length, :] + right_points[:min_length, :]) / 2
+
+    return track_points
 
 
 if __name__ == "__main__":

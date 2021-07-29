@@ -42,28 +42,28 @@ class ConeTracker(ObjectTracker):
     COLOR_UNKNOWN = 0
     COLOR_BLUE = 1
     COLOR_YELLOW = 2
-    COLOR_ORANGE = 3
+
     HUE_MIN_BLUE = 104
     HUE_MAX_BLUE = 114
     SAT_MIN_BLUE = 190
     SAT_MAX_BLUE = 250
-    SAT_MIN_YELLOW = 110
-    SAT_MAX_YELLOW = 170
+
     HUE_MIN_YELLOW = 22
     HUE_MAX_YELLOW = 32
+    SAT_MIN_YELLOW = 110
+    SAT_MAX_YELLOW = 170
 
     def __init__(self, initial_position):
         super().__init__(initial_position)
         self.color = ConeTracker.COLOR_UNKNOWN
 
-    def determine_color(self, hsv_image):
+    def determine_color(self, hsv_image, default_result=0):
         resulting_color = estimate_cone_color(hsv_image)
         if resulting_color != self.COLOR_UNKNOWN:
             self.color = resulting_color
         else:
-            pass
+            self.color = default_result
         return resulting_color
-        # No "else". If undecisive, whether color is currently unknown or not - leave it be.
 
     @classmethod
     def generate_histogram(cls, hsv_image):

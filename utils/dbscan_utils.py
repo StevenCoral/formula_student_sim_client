@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from sklearn.cluster import DBSCAN
 
 
-def filter_cloud(pointcloud, min_distance=0.0, max_distance=100.0, min_height=-10.0, max_height=10.0):
+def filter_cloud(pointcloud, min_distance=0.0, max_distance=100.0, min_height=-1.0, max_height=1.0):
     distances = np.linalg.norm(pointcloud, axis=1)
     filtered_distance = np.bitwise_and(distances > min_distance,
                                        distances < max_distance)

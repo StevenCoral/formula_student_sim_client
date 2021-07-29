@@ -14,8 +14,8 @@ class PathFollower:
 
         # The rest of the parameters should be set post-initialization,
         # since it is usually less frequently changed (vehicle params):
-        self.max_velocity = 10.0  # m/s
-        self.min_velocity = 6.0  # m/s
+        self.max_velocity = 14.0  # m/s
+        self.min_velocity = 7.0  # m/s
         self.max_steering = np.deg2rad(40.0)  # radians
         self.epsilon = 1e-4  # For numerical stability
 
@@ -60,7 +60,54 @@ class PathFollower:
         return updated_pos, updated_heading
 
 
+class ProximitySteer:
+    def __init__(self, front=1, sideways=1):
+        self.front_distance = front
+        self.sideways_distance = sideways
+        self.max_steering = np.deg2rad(40.0)  # radians
+        self.steering_coeff = 1.0
+
+    def calculate_steering(self, detections):
+        numpy_dets = np.asarray(detections)  # To support also lists
+        left_detections = self.filter_side(numpy_dets, True)
+        right_detections = self.filter_side(numpy_dets, False)
+        left_min = np.min(np.linalg.norm(left_detections))
+        right_min = np.min(np.linalg.norm(right_detections))
+        steering = self.steering_coeff * (left_min - right_min)
+
+        return steering
+
+    def filter_side(self, detections, left_side):
+        if left_side:
+            sideways_filter = np.bitwise_and(detections[:, 1] > 0.0, detections[:, 1] < self.sideways_distance)
+        else:  # Only left or right...
+            sideways_filter = np.bitwise_and(detections[:, 1] > 0, detections[:, 1] < self.sideways_distance)
+
+        front_filter = np.bitwise_and(detections[:, 0] > 0.0, detections[:, 0] < self.front_distance)
+        filtered_indices = np.bitwise_and(sideways_filter, front_filter)
+
+        return detections[filtered_indices, :]
+
+    # How do we get the trackers back in vehicle frame?
+    # Append raw lidar detections to a new list if they correspond to active trackers?
+
+
 if __name__ == '__main__':
+
+    # steer_controller = PidfControl(0.01)
+    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    # steer_controller.set_extrema(0.01, 1.0)
+    # steer_controller.alpha = 0.01
+    # steer_emulator = WheelsPlant(0.01)
+    # steer_input = multiprocessing.Value('f', 0.0)
+    # steer_output = multiprocessing.Value('f', 0.0)
+    # is_active = multiprocessing.Value('B', int(1))
+    # steering_thread = multiprocessing.Process(target=steer_emulator.async_steering,
+    #                                           args=(steer_controller, steer_input, steer_output, is_active),
+    #                                           daemon=True)
+    # steering_thread.start()
+    # time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
+
     # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" in unreal:
     starting_x = 10.0
     starting_y = 20.0
@@ -72,7 +119,7 @@ if __name__ == '__main__':
     y -= starting_y
 
     my_spline = PathSpline(x, y)
-    my_spline.generate_spline(0.1)
+    my_spline.generate_spline(0.1, smoothing=1)
     follow_handler = PathFollower(my_spline)
     follow_handler.k_vel *= 2.0
 
