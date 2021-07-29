@@ -64,7 +64,7 @@ class ProximitySteer:
     def __init__(self, front=1, sideways=1):
         self.front_distance = front
         self.sideways_distance = sideways
-        self.max_steering = np.deg2rad(40.0)  # radians
+        self.max_steering = np.deg2rad(40.0)  # Radians
         self.steering_coeff = 1.0
 
     def calculate_steering(self, detections):
