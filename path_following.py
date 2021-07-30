@@ -7,7 +7,7 @@ import time
 import pickle
 import multiprocessing
 import spatial_utils
-from path_control import PathFollower
+from path_control import StanleyFollower
 from pidf_controller import PidfControl
 from wheel_steer_emulator import WheelsPlant
 
@@ -39,7 +39,7 @@ def following_loop(client, spline_obj=None):
         spline_obj.generate_spline(0.1, smoothing=1)
         spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
 
-    follow_handler = PathFollower(spline_obj)
+    follow_handler = StanleyFollower(spline_obj)
     follow_handler.k_vel *= 2.0
 
     # Define speed controller:
@@ -80,32 +80,17 @@ def following_loop(client, spline_obj=None):
                 if distance_from_start < entering_distance:
                     break
 
-            desired_speed, desired_steer, idx, distance, tangent, teta_e, teta_f = follow_handler.calc_ref_speed_steering(curr_pos, curr_vel, curr_heading)
+            desired_speed, desired_steer = follow_handler.calc_ref_speed_steering(curr_pos, curr_vel, curr_heading)
 
             # Close a control loop over the throttle/speed of the vehicle:
             throttle_command = speed_controller.velocity_control(desired_speed, 0, curr_vel)
 
             desired_steer /= follow_handler.max_steering  # Convert range to [-1, 1]
+            desired_steer = np.clip(desired_steer, -0.3, 0.3)  # Saturate
 
             car_controls.throttle = throttle_command
             car_controls.steering = desired_steer
             client.setCarControls(car_controls)
-
-            new_car_data = [car_state.kinematics_estimated.position.x_val,
-                            car_state.kinematics_estimated.position.y_val,
-                            curr_heading,
-                            curr_vel]
-            car_data = np.append(car_data, [new_car_data], axis=0)
-
-            new_control_data = [desired_speed,
-                                desired_steer,
-                                idx,
-                                distance,
-                                tangent[0],
-                                tangent[1],
-                                teta_e,
-                                teta_f]
-            control_data = np.append(control_data, [new_control_data], axis=0)
 
         else:
             time.sleep(0.005)
