@@ -15,15 +15,14 @@ class StanleyFollower:
         self.path = path_spline
 
         # Max steering MUST be the same as your simulated vehicle's settings within Unreal.
-        self.max_velocity = 14.0  # m/s
-        self.min_velocity = 7.0  # m/s
+        self.max_velocity = 10.0  # m/s
+        self.min_velocity = 5.0  # m/s
         self.max_steering = np.deg2rad(40.0)  # radians
 
         # Generic value:
         self.k_vel = (self.max_velocity - self.min_velocity) / (self.path.curvature.max() + self.EPSILON)
         self.lookahead = 5.0  # meters
         self.k_steer = 10.0  # Stanley steering coefficient
-        self.stanley_denom = 1e-4
 
     def calc_ref_speed_steering(self, car_pos, car_vel, heading):
         # First we match the path steering angle [rad]:
@@ -178,61 +177,3 @@ if __name__ == '__main__':
     follow_handler = StanleyFollower(my_spline)
     follow_handler.k_vel *= 2.0
 
-    # connect to the AirSim simulator
-    client = airsim.CarClient()
-    client.confirmConnection()
-    client.enableApiControl(True)
-    spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
-    time.sleep(1.0)
-    # client.enableApiControl(False)
-
-    car_controls = airsim.CarControls()
-    car_data = np.ndarray(shape=(0, 4))
-    control_data = np.ndarray(shape=(0, 8))
-
-    start_time = time.time()
-    while time.time() - start_time < 90.0:
-        car_state = client.getCarState()
-        car_pose = client.simGetVehiclePose()
-        # kinematics estimated is the airsim dead reckoning!
-        # curr_pos = [car_state.kinematics_estimated.position.x_val, car_state.kinematics_estimated.position.y_val]
-        curr_pos = [car_pose.position.x_val + starting_x, car_pose.position.y_val + starting_y]
-        curr_vel = car_state.speed
-        orient = car_pose.orientation
-        quat = np.array([orient.x_val, orient.y_val, orient.z_val, orient.w_val])
-        rot = Rot.from_quat(quat)
-        curr_heading = rot.as_euler('xyz', degrees=False)[2]
-        # desired_speed, desired_steer = follow_handler.calc_ref_speed_steering(curr_pos, curr_vel, curr_heading)
-        desired_speed, desired_steer, idx, distance, tangent, teta_e, teta_f = follow_handler.calc_ref_speed_steering(curr_pos, curr_vel, curr_heading)
-        desired_steer /= follow_handler.max_steering
-
-        # car_controls.throttle = 0.6
-        car_controls.throttle = desired_speed / 16.0  # Something like...
-        car_controls.steering = -desired_steer
-        client.setCarControls(car_controls)
-
-        new_car_data = [car_state.kinematics_estimated.position.x_val,
-                        car_state.kinematics_estimated.position.y_val,
-                        curr_heading,
-                        curr_vel]
-        car_data = np.append(car_data, [new_car_data], axis=0)
-
-        new_control_data = [desired_speed,
-                            desired_steer,
-                            idx,
-                            distance,
-                            tangent[0],
-                            tangent[1],
-                            teta_e,
-                            teta_f]
-        control_data = np.append(control_data, [new_control_data], axis=0)
-
-        print('current timestamp: ', time.time() - start_time)
-        time.sleep(0.1)
-
-    with open('car_data.pickle', 'wb') as car_file:
-        pickle.dump(car_data, car_file)
-    print('saved car data')
-    with open('control_data.pickle', 'wb') as control_file:
-        pickle.dump(control_data, control_file)
-    print('saved control data')

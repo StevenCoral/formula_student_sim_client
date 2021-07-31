@@ -40,11 +40,14 @@ def following_loop(client, spline_obj=None):
         spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
 
     follow_handler = StanleyFollower(spline_obj)
-    follow_handler.k_vel *= 2.0
+    follow_handler.k_vel *= 3.0
+    follow_handler.max_velocity = 15.0  # m/s
+    follow_handler.min_velocity = 10.0  # m/s
+    follow_handler.lookahead = 6.0  # meters
+    follow_handler.k_steer = 2.0  # Stanley steering coefficient
 
     # Define speed controller:
     speed_controller = PidfControl(0.1)
-    # speed_controller.set_pidf(0.275, 0.3, 0.0, 0.044)
     speed_controller.set_pidf(0.05, 0.0, 0.0, 0.044)
     speed_controller.set_extrema(0.01, 0.01)
     speed_controller.alpha = 0.01
@@ -86,7 +89,7 @@ def following_loop(client, spline_obj=None):
             throttle_command = speed_controller.velocity_control(desired_speed, 0, curr_vel)
 
             desired_steer /= follow_handler.max_steering  # Convert range to [-1, 1]
-            desired_steer = np.clip(desired_steer, -0.3, 0.3)  # Saturate
+            # desired_steer = np.clip(desired_steer, -0.3, 0.3)  # Saturate
 
             car_controls.throttle = throttle_command
             car_controls.steering = desired_steer
