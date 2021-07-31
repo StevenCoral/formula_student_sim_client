@@ -66,7 +66,7 @@ def set_airsim_pose(airsim_client, desired_position, desired_rot, inherit_z=True
     initial_pose.position.x_val = pos[0]
     initial_pose.position.y_val = pos[1]
     initial_pose.position.z_val = pos[2]
-    airsim_client.simSetVehiclePose(initial_pose, ignore_collison=True)
+    airsim_client.simSetVehiclePose(initial_pose, ignore_collision=True)
 
 
 def extract_rotation_from_airsim(orientation):

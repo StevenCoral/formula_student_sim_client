@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 import numpy as np
-from scipy.spatial.transform import Rotation as Rot
 import time
 import pickle
-import csv
-from matplotlib import pyplot as plt
 from sklearn.cluster import DBSCAN
 import airsim
 import dbscan_utils
@@ -15,8 +12,10 @@ import path_control
 import os
 import cv2
 
+decimation = 30e9
 
-def aggregate_detections(airsim_client, iterations=2):
+
+def aggregate_detections(airsim_client, iterations=1):
     pointcloud = np.array([])
     for curr_iter in range(iterations):
         lidar_data = airsim_client.getLidarData()
@@ -28,7 +27,8 @@ def process_camera(lidar_to_cam, vector, camera, image, tracked_cone, idx, copy_
     vector_camera = np.matmul(lidar_to_cam, vector)[:3]
     hsv_image, hsv_success = camera.get_cropped_hsv(image, vector_camera)
     cone_color = tracked_cone.determine_color(hsv_image) if hsv_success else 0
-    if idx > 10 and hsv_success:
+    global decimation
+    if idx > decimation and hsv_success:
         if cone_color == 0:
             bgr_color = (0, 0, 255)
         elif cone_color == 1:
@@ -45,8 +45,9 @@ def process_camera(lidar_to_cam, vector, camera, image, tracked_cone, idx, copy_
 
 
 def mapping_loop(client):
-    image_dest = 'D:\\MscProject\\BGR_client\\images'
-    data_dest = 'D:\\MscProject\\BGR_client\\test'
+    global decimation
+    image_dest = os.path.join(os.getcwd(), 'images')
+    data_dest = os.path.join(os.getcwd(), 'test')
     save_data = False
 
     # Constant transform matrices:
@@ -81,9 +82,9 @@ def mapping_loop(client):
     start_time = time.time()
     last_iteration = start_time
     sample_time = 0.1
+    execution_time = 0.0
 
     idx = 0
-    decimation = 30
     save_idx = 0
     while last_iteration - start_time < 300:
         delta_time = time.time() - last_iteration
@@ -93,6 +94,8 @@ def mapping_loop(client):
             vehicle_to_map = spatial_utils.tf_matrix_from_airsim_object(vehicle_pose)
             map_to_vehicle = np.linalg.inv(vehicle_to_map)
             lidar_to_map = np.matmul(vehicle_to_map, lidar_to_vehicle)
+            car_state = client.getCarState()
+            curr_vel = car_state.speed
 
             distance_from_start = np.linalg.norm(vehicle_to_map[0:2, 3])
             if not loop_trigger:
@@ -105,18 +108,20 @@ def mapping_loop(client):
             # To minimize discrepancy between data sources, all acquisitions must be made before processing:
             responses = client.simGetImages([airsim.ImageRequest("LeftCam", 0, False, False),
                                              airsim.ImageRequest("RightCam", 0, False, False)])
-            point_cloud = aggregate_detections(client)  # Airsim's lidar implementation requires aggregation
+
+            lidar_data = client.getLidarData()
+            pointcloud = np.array(lidar_data.point_cloud, dtype=np.dtype('f4'))
+            pointcloud = pointcloud.reshape((int(pointcloud.shape[0] / 3), 3))
 
             # Save the images in memory
             left_image = camera_utils.get_bgr_image(responses[0])
             right_image = camera_utils.get_bgr_image(responses[1])
 
-
             left_copy = np.copy(left_image)
             right_copy = np.copy(right_image)
 
             # DBSCAN filtering is done on the sensor-frame
-            filtered_pc = dbscan_utils.filter_cloud(point_cloud, 3.0, 8.0, -0.5, 1.0)
+            filtered_pc = dbscan_utils.filter_cloud(pointcloud, 3.0, 8.0, -0.5, 1.0)
 
             # Only if SOME clusters were found:
             if filtered_pc.size > 0:
@@ -125,11 +130,11 @@ def mapping_loop(client):
                 curr_segments, curr_centroids, curr_labels = dbscan_utils.collate_segmentation(db, 1.0)
                 curr_centroids.sort(key=lambda x: np.linalg.norm(x))
                 curr_tracked = np.ndarray(shape=(0, 3))
-                debug_centroids = []
 
                 # Go through the DBSCAN centroids of the current frame:
                 for centroid_airsim in curr_centroids:
                     centroid_eng, dump = spatial_utils.convert_eng_airsim(centroid_airsim, [0, 0, 0])
+                    centroid_eng[0] -= execution_time * curr_vel * 2.0  # Compensate for sensor sync
                     centroid_lidar = np.append(centroid_eng, 1)
                     centroid_global = np.matmul(lidar_to_map, centroid_lidar)[:3]
                     # We must track yellow and blue cones within the common (global) frame of reference.
@@ -166,12 +171,15 @@ def mapping_loop(client):
                         tracked_cones.append(new_centroid)
 
             desired_steer = pursuit_follower.calc_ref_steering(tracked_cones, map_to_vehicle)
+            # if np.abs(desired_steer) > 0.001:
+            #     print(desired_steer)
             desired_steer /= pursuit_follower.max_steering  # Convert range to [-1, 1]
             desired_steer = np.clip(desired_steer, -0.2, 0.2)  # Saturate
 
             car_controls.steering = desired_steer
             client.setCarControls(car_controls)
-            print(time.time() - last_iteration)
+            execution_time = time.time() - last_iteration
+            print(execution_time, execution_time * curr_vel)
 
             if idx > decimation:
                 cv2.imwrite(os.path.join(image_dest, 'left_' + str(save_idx) + '.png'), left_copy)
@@ -184,7 +192,7 @@ def mapping_loop(client):
             time.sleep(0.005)
 
     if save_data:
-        tracked_objects = {'cones': tracked_cones, 'pursuit': pursuit_points}
+        tracked_objects = {'cones': tracked_cones, 'pursuit':pursuit_follower.pursuit_points}
         with open(os.path.join(data_dest, 'tracker_session.pickle'), 'wb') as pickle_file:
             pickle.dump(tracked_objects, pickle_file)
         print('pickle saved')
