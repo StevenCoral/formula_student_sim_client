@@ -11,7 +11,7 @@ import path_control
 import os
 import cv2
 
-decimation = 30e9
+decimation = 10
 
 
 def aggregate_detections(airsim_client, iterations=1):
@@ -67,14 +67,14 @@ def mapping_loop(client):
     pursuit_follower.k_steer = 0.5
 
     spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
-    time.sleep(1.0)
-    car_controls = airsim.CarControls()
-    car_controls.throttle = 0.2
-    client.setCarControls(car_controls)
+    # time.sleep(1.0)
+    # car_controls = airsim.CarControls()
+    # car_controls.throttle = 0.2
+    # client.setCarControls(car_controls)
 
-    loop_trigger = False
-    leaving_distance = 10.0
-    entering_distance = 4.0
+    # loop_trigger = False
+    # leaving_distance = 10.0
+    # entering_distance = 4.0
 
     tracked_cones = []
 
@@ -96,13 +96,13 @@ def mapping_loop(client):
             car_state = client.getCarState()
             curr_vel = car_state.speed
 
-            distance_from_start = np.linalg.norm(vehicle_to_map[0:2, 3])
-            if not loop_trigger:
-                if distance_from_start > leaving_distance:
-                    loop_trigger = True
-            else:
-                if distance_from_start < entering_distance:
-                    break
+            # distance_from_start = np.linalg.norm(vehicle_to_map[0:2, 3])
+            # if not loop_trigger:
+            #     if distance_from_start > leaving_distance:
+            #         loop_trigger = True
+            # else:
+            #     if distance_from_start < entering_distance:
+            #         break
 
             # To minimize discrepancy between data sources, all acquisitions must be made before processing:
             responses = client.simGetImages([airsim.ImageRequest("LeftCam", 0, False, False),
@@ -169,14 +169,14 @@ def mapping_loop(client):
                         new_centroid = tracker_utils.ConeTracker(centroid_global)
                         tracked_cones.append(new_centroid)
 
-            desired_steer = pursuit_follower.calc_ref_steering(tracked_cones, map_to_vehicle)
-            desired_steer /= pursuit_follower.max_steering  # Convert range to [-1, 1]
-            desired_steer = np.clip(desired_steer, -0.2, 0.2)  # Saturate
-
-            car_controls.steering = desired_steer
-            client.setCarControls(car_controls)
+            # desired_steer = pursuit_follower.calc_ref_steering(tracked_cones, map_to_vehicle)
+            # desired_steer /= pursuit_follower.max_steering  # Convert range to [-1, 1]
+            # desired_steer = np.clip(desired_steer, -0.2, 0.2)  # Saturate
+            #
+            # car_controls.steering = desired_steer
+            # client.setCarControls(car_controls)
             execution_time = time.time() - last_iteration
-            print(execution_time, execution_time * curr_vel)
+            # print(execution_time, execution_time * curr_vel)
 
             if idx > decimation:
                 cv2.imwrite(os.path.join(image_dest, 'left_' + str(save_idx) + '.png'), left_copy)
@@ -200,11 +200,11 @@ def mapping_loop(client):
 if __name__ == '__main__':
     airsim_client = airsim.CarClient()
     airsim_client.confirmConnection()
-    airsim_client.enableApiControl(True)
+    # airsim_client.enableApiControl(True)
     dump = mapping_loop(airsim_client)
 
     # Done! stop vehicle:
-    car_controls = airsim_client.getCarControls()
-    car_controls.throttle = 0.0
-    car_controls.brake = 1.0
-    airsim_client.setCarControls(car_controls)
+    # car_controls = airsim_client.getCarControls()
+    # car_controls.throttle = 0.0
+    # car_controls.brake = 1.0
+    # airsim_client.setCarControls(car_controls)

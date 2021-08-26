@@ -46,11 +46,11 @@ class ConeTracker(ObjectTracker):
     HUE_MIN_BLUE = 107
     HUE_MAX_BLUE = 111
     SAT_MIN_BLUE = 200
-    SAT_MAX_BLUE = 240
+    SAT_MAX_BLUE = 255
 
-    HUE_MIN_YELLOW = 25
-    HUE_MAX_YELLOW = 29
-    SAT_MIN_YELLOW = 120
+    HUE_MIN_YELLOW = 20
+    HUE_MAX_YELLOW = 40
+    SAT_MIN_YELLOW = 80
     SAT_MAX_YELLOW = 160
 
     def __init__(self, initial_position):
@@ -68,10 +68,10 @@ class ConeTracker(ObjectTracker):
     @classmethod
     def generate_histogram(cls, hsv_image):
         # Create a mask of known ranges of saturation (to differentiate cone from asphalt background):
-        saturation_mask = np.logical_or(np.logical_and(hsv_image[:, :, 1] > cls.SAT_MIN_YELLOW,
-                                                       hsv_image[:, :, 1] < cls.SAT_MAX_YELLOW),
-                                        np.logical_and(hsv_image[:, :, 1] > cls.SAT_MIN_BLUE,
-                                                       hsv_image[:, :, 1] < cls.SAT_MAX_BLUE))
+        saturation_mask = np.logical_or(np.logical_and(hsv_image[:, :, 1] >= cls.SAT_MIN_YELLOW,
+                                                       hsv_image[:, :, 1] <= cls.SAT_MAX_YELLOW),
+                                        np.logical_and(hsv_image[:, :, 1] >= cls.SAT_MIN_BLUE,
+                                                       hsv_image[:, :, 1] <= cls.SAT_MAX_BLUE))
         # Use masked cells to create a Hue histogram so we can differentiate between cone colors:
         histogram = np.bincount(hsv_image[saturation_mask, 0].flatten(), minlength=180)  # Faster than np.histogram()
         return histogram

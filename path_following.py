@@ -87,6 +87,7 @@ def following_loop(client, spline_obj=None):
 
             # Close a control loop over the throttle/speed of the vehicle:
             throttle_command = speed_controller.velocity_control(desired_speed, 0, curr_vel)
+            throttle_command = np.clip(throttle_command, 0.0, 1.0)
 
             desired_steer /= follow_handler.max_steering  # Convert range to [-1, 1]
             desired_steer = np.clip(desired_steer, -0.3, 0.3)  # Saturate
