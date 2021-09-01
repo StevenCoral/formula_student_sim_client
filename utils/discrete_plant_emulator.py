@@ -6,12 +6,13 @@ from pidf_controller import PidfControl
 from scipy.spatial.transform import Rotation as Rot
 import time
 import pickle
+import csv
 import threading
 import multiprocessing
 import airsim
 
 
-class WheelsPlant:
+class DiscretePlant:
     def __init__(self, ts, k=1, a=1):
         # Emulates a discrete plant of the form: k/(s^2+as).
         alpha = 1/(2*a*ts + 4)
@@ -49,7 +50,7 @@ def run_subprocess():
     duration = 4
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
-    steer_emulator = WheelsPlant(0.01)
+    steer_emulator = DiscretePlant(0.01)
     steer_controller = PidfControl(0.01)
     steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
     steer_controller.set_extrema(0.01, 1.0)
@@ -125,10 +126,10 @@ def run_offline():
     duration = 4
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
-    steer_emulator = WheelsPlant(0.01)
-    steer_controller = PidfControl(0.01)
+    steer_emulator = DiscretePlant(0.001, 10, 4)
+    steer_controller = PidfControl(0.001)
     # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
-    steer_controller.set_pidf(600.0, 0.0, 35.0, 0.0)
+    steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
     steer_controller.set_extrema(0.01, 1.0)
     steer_controller.alpha = 0.01
 
@@ -141,28 +142,34 @@ def run_offline():
     run_time = current_time - start_time
     iteration_time = current_time - last_iteration
 
-    while run_time <= duration:
+    while idx < duration * 1000:
         current_time = time.time()
         iteration_time = current_time - last_iteration
         run_time = current_time - start_time
 
-        if iteration_time >= 0.01:
-            if run_time > 1.0:
-                setpoint = -20.0
-            if run_time > 2.0:
-                setpoint = 30.0
-            if run_time > 3.0:
-                setpoint = -40.0
+        if idx > 1.0 * 1000:
+            setpoint = -20.0
+        if idx > 2.0 * 1000:
+            setpoint = 30.0
+        if idx > 3.0 * 1000:
+            setpoint = -40.0
 
-            compensated_signal = steer_controller.position_control(setpoint, output)
-            output = steer_emulator.iterate_step(compensated_signal)
+        compensated_signal = steer_controller.position_control(setpoint, output)
+        output = steer_emulator.iterate_step(compensated_signal)
 
-            idx += 1
-            inputs = np.append(inputs, setpoint)
-            outputs = np.append(outputs, output)
-            last_iteration = time.time()
+        idx += 1
+        inputs = np.append(inputs, setpoint)
+        outputs = np.append(outputs, output)
+        last_iteration = time.time()
 
     # Plot the result
+    # save_data = np.append(inputs.reshape((inputs.size, 1)), outputs.reshape((outputs.size, 1)), axis=1)
+    # #{'inputs': inputs, 'outputs': outputs}
+    # with open('discrete.csv', 'w', newline='') as csv_file:
+    #     writer = csv.writer(csv_file)
+    #     writer.writerow(['inputs', 'outputs'])
+    #     writer.writerows(save_data)
+    # print('saved csv data')
     timeline = np.linspace(0, duration, idx)
     fig, ax = plt.subplots(1, 1)
     ax.plot(timeline, inputs, '-r')

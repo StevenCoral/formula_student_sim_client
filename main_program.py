@@ -2,8 +2,6 @@ import cone_mapping
 import path_following
 import airsim
 import spline_utils
-import tracker_utils
-import numpy as np
 
 # Create an airsim client instance:
 airsim_client = airsim.CarClient()

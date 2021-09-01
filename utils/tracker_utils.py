@@ -13,7 +13,7 @@ class ObjectTracker:
         self.activation_thresh = 3
         self.deactivation_thresh = 3
 
-        self.max_detections = 10
+        self.max_detections = 100
         self.num_detections = 1
         self.num_misdetections = 0
 
@@ -22,9 +22,11 @@ class ObjectTracker:
         self.detections.append(detection)
         self.num_detections += 1
         if self.num_detections > self.max_detections:
+            # Remove oldest detection from the list and its contribution to the moving average:
             dump = self.detections.pop(0)
             self.num_detections -= 1
             self.position = (self.position * self.num_detections - dump) / (self.num_detections - 1)
+        # Add the new detection's values into the moving average:
         self.position = (self.position * (self.num_detections - 1) + detection) / self.num_detections
         if self.num_detections >= self.activation_thresh:
             self.active = True
@@ -56,6 +58,7 @@ class ConeTracker(ObjectTracker):
     def __init__(self, initial_position):
         super().__init__(initial_position)
         self.color = ConeTracker.COLOR_UNKNOWN
+        self.color_history = [ConeTracker.COLOR_UNKNOWN]
 
     def determine_color(self, hsv_image, default_result=0):
         resulting_color = estimate_cone_color(hsv_image)
@@ -63,6 +66,7 @@ class ConeTracker(ObjectTracker):
             self.color = resulting_color
         else:
             self.color = default_result
+        self.color_history.append(resulting_color)
         return resulting_color
 
     @classmethod

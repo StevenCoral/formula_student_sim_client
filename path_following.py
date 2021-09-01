@@ -2,14 +2,13 @@
 from spline_utils import PathSpline
 import numpy as np
 import airsim
-from scipy.spatial.transform import Rotation as Rot
 import time
 import pickle
-import multiprocessing
 import spatial_utils
 from path_control import StanleyFollower
 from pidf_controller import PidfControl
-from wheel_steer_emulator import WheelsPlant
+from discrete_plant_emulator import DiscretePlant
+from matplotlib import pyplot as plt
 
 
 def following_loop(client, spline_obj=None):
@@ -39,12 +38,24 @@ def following_loop(client, spline_obj=None):
         spline_obj.generate_spline(0.1, smoothing=1)
         spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
 
+    # Define Stanley-method parameters:
     follow_handler = StanleyFollower(spline_obj)
     follow_handler.k_vel *= 3.0
     follow_handler.max_velocity = 15.0  # m/s
     follow_handler.min_velocity = 10.0  # m/s
-    follow_handler.lookahead = 6.0  # meters
+    follow_handler.lookahead = 5.0  # meters
     follow_handler.k_steer = 2.0  # Stanley steering coefficient
+
+    # Define emulated steering plant and controller:
+    inputs = np.array([], dtype=float)
+    outputs = np.array([], dtype=float)
+    steer_emulator = DiscretePlant(0.01)
+    steer_controller = PidfControl(0.01)
+    steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    steer_controller.set_extrema(0.01, 1.0)
+    steer_controller.alpha = 0.01
+    desired_steer = 0.0
+    real_steer = 0.0
 
     # Define speed controller:
     speed_controller = PidfControl(0.1)
@@ -52,6 +63,7 @@ def following_loop(client, spline_obj=None):
     speed_controller.set_extrema(0.01, 0.01)
     speed_controller.alpha = 0.01
 
+    # Initialize loop variables:
     loop_trigger = False
     leaving_distance = 10.0
     entering_distance = 4.0
@@ -61,13 +73,26 @@ def following_loop(client, spline_obj=None):
     control_data = np.ndarray(shape=(0, 8))
 
     start_time = time.time()
-    last_iteration = start_time
-    sample_time = 0.1
+    planning_last_iteration = start_time
+    control_last_iteration = start_time
+    planning_sample_time = 0.1
+    control_sample_time = 0.01
+    execution_time = 0.0
 
-    while last_iteration - start_time < 300:
-        delta_time = time.time() - last_iteration
-        if delta_time > sample_time:
-            last_iteration = time.time()
+    while planning_last_iteration - start_time < 10: #TODO change back to 300
+        now = time.time()
+        planning_delta_time = now - planning_last_iteration
+        control_delta_time = now - control_last_iteration
+
+        if control_delta_time > control_sample_time:
+            control_last_iteration = time.time()
+            compensated_signal = steer_controller.position_control(desired_steer, real_steer)
+            real_steer = steer_emulator.iterate_step(compensated_signal)
+            inputs = np.append(inputs, desired_steer)
+            outputs = np.append(outputs, real_steer)
+
+        if planning_delta_time > planning_sample_time:
+            planning_last_iteration = time.time()
             vehicle_pose = client.simGetVehiclePose()
             vehicle_to_map = spatial_utils.tf_matrix_from_airsim_object(vehicle_pose)
             car_state = client.getCarState()
@@ -93,11 +118,19 @@ def following_loop(client, spline_obj=None):
             desired_steer = np.clip(desired_steer, -0.3, 0.3)  # Saturate
 
             car_controls.throttle = throttle_command
-            car_controls.steering = desired_steer
+            car_controls.steering = real_steer #desired_steer
             client.setCarControls(car_controls)
 
         else:
-            time.sleep(0.005)
+            time.sleep(0.001)
+
+    timeline = np.linspace(0, 10, len(inputs))
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(timeline, inputs, '-r')
+    ax.plot(timeline, outputs, '-b')
+    ax.grid(True)
+    fig.show()
+    a=5
 
     if save_data:
         with open('car_data.pickle', 'wb') as car_file:
@@ -115,7 +148,7 @@ if __name__ == '__main__':
     following_loop(airsim_client)
 
     # Done! stop vehicle:
-    car_controls = airsim_client.getCarControls()
-    car_controls.throttle = 0.0
-    car_controls.brake = 1.0
-    airsim_client.setCarControls(car_controls)
+    vehicle_controls = airsim_client.getCarControls()
+    vehicle_controls.throttle = 0.0
+    vehicle_controls.brake = 1.0
+    airsim_client.setCarControls(vehicle_controls)

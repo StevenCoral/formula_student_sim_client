@@ -10,6 +10,8 @@ import camera_utils
 import path_control
 import os
 import cv2
+from pidf_controller import PidfControl
+from discrete_plant_emulator import DiscretePlant
 
 decimation = 30e9
 
@@ -63,32 +65,54 @@ def mapping_loop(client):
     lidar_to_left_cam = np.matmul(np.linalg.inv(left_cam_to_vehicle), lidar_to_vehicle)
     lidar_to_right_cam = np.matmul(np.linalg.inv(right_cam_to_vehicle), lidar_to_vehicle)
 
+    # Define pure pursuit parameters
     pursuit_follower = path_control.PursuitFollower(2.0, 6.0)
     pursuit_follower.k_steer = 0.5
 
+    # Define emulated steering plant and controller:
+    steer_emulator = DiscretePlant(0.01)
+    steer_controller = PidfControl(0.01)
+    steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    steer_controller.set_extrema(0.01, 1.0)
+    steer_controller.alpha = 0.01
+    desired_steer = 0.0
+    real_steer = 0.0
+
+    # Initialize vehicle starting point
     spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
     time.sleep(1.0)
     car_controls = airsim.CarControls()
     car_controls.throttle = 0.2
     client.setCarControls(car_controls)
 
+    # Initialize loop variables
+    tracked_cones = []
+
     loop_trigger = False
     leaving_distance = 10.0
     entering_distance = 4.0
 
-    tracked_cones = []
-
     start_time = time.time()
-    last_iteration = start_time
-    sample_time = 0.1
+    planning_last_iteration = start_time
+    control_last_iteration = start_time
+    planning_sample_time = 0.1
+    control_sample_time = 0.01
     execution_time = 0.0
 
     idx = 0
     save_idx = 0
-    while last_iteration - start_time < 300:
-        delta_time = time.time() - last_iteration
-        if delta_time > sample_time:
-            last_iteration = time.time()
+    while planning_last_iteration - start_time < 300:
+        now = time.time()
+        planning_delta_time = now - planning_last_iteration
+        control_delta_time = now - control_last_iteration
+
+        if control_delta_time > control_sample_time:
+            control_last_iteration = time.time()
+            compensated_signal = steer_controller.position_control(desired_steer, real_steer)
+            real_steer = steer_emulator.iterate_step(compensated_signal)
+
+        if planning_delta_time > planning_sample_time:
+            planning_last_iteration = time.time()
             vehicle_pose = client.simGetVehiclePose()
             vehicle_to_map = spatial_utils.tf_matrix_from_airsim_object(vehicle_pose)
             map_to_vehicle = np.linalg.inv(vehicle_to_map)
@@ -173,10 +197,10 @@ def mapping_loop(client):
             desired_steer /= pursuit_follower.max_steering  # Convert range to [-1, 1]
             desired_steer = np.clip(desired_steer, -0.2, 0.2)  # Saturate
 
-            car_controls.steering = desired_steer
+            car_controls.steering = real_steer
             client.setCarControls(car_controls)
-            execution_time = time.time() - last_iteration
-            print(execution_time, execution_time * curr_vel)
+            execution_time = time.time() - planning_last_iteration
+            # print(execution_time, execution_time * curr_vel)
 
             if idx > decimation:
                 cv2.imwrite(os.path.join(image_dest, 'left_' + str(save_idx) + '.png'), left_copy)
@@ -186,10 +210,10 @@ def mapping_loop(client):
 
             idx += 1
         else:
-            time.sleep(0.005)
+            time.sleep(0.001)
 
     if save_data:
-        tracked_objects = {'cones': tracked_cones, 'pursuit':pursuit_follower.pursuit_points}
+        tracked_objects = {'cones': tracked_cones, 'pursuit': pursuit_follower.pursuit_points}
         with open(os.path.join(data_dest, 'tracker_session.pickle'), 'wb') as pickle_file:
             pickle.dump(tracked_objects, pickle_file)
         print('pickle saved')
@@ -204,7 +228,7 @@ if __name__ == '__main__':
     dump = mapping_loop(airsim_client)
 
     # Done! stop vehicle:
-    car_controls = airsim_client.getCarControls()
-    car_controls.throttle = 0.0
-    car_controls.brake = 1.0
-    airsim_client.setCarControls(car_controls)
+    vehicle_controls = airsim_client.getCarControls()
+    vehicle_controls.throttle = 0.0
+    vehicle_controls.brake = 1.0
+    airsim_client.setCarControls(vehicle_controls)
