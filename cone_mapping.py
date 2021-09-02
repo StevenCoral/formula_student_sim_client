@@ -12,6 +12,10 @@ import os
 import cv2
 from pidf_controller import PidfControl
 from discrete_plant_emulator import DiscretePlant
+import multiprocessing
+from multiprocessing import shared_memory
+import struct
+import csv
 
 decimation = 30e9
 
@@ -70,13 +74,34 @@ def mapping_loop(client):
     pursuit_follower.k_steer = 0.5
 
     # Define emulated steering plant and controller:
-    steer_emulator = DiscretePlant(0.01)
-    steer_controller = PidfControl(0.01)
-    steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    inputs = np.array([], dtype=float)
+    outputs = np.array([], dtype=float)
+    # dt = 0.01
+    # steer_emulator = DiscretePlant(dt, 1, 1)
+    # steer_controller = PidfControl(dt)
+    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    # steer_controller.set_extrema(0.01, 1.0)
+    # steer_controller.alpha = 0.01
+    dt = 0.001
+    steer_emulator = DiscretePlant(dt, 10, 4)
+    steer_controller = PidfControl(dt)
+    steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
     steer_controller.set_extrema(0.01, 1.0)
     steer_controller.alpha = 0.01
+    shmem_active = shared_memory.SharedMemory(name='active_state', create=True, size=1)
+    shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=True, size=8)
+    shmem_output = shared_memory.SharedMemory(name='output_value', create=True, size=8)
+    is_active = True
     desired_steer = 0.0
     real_steer = 0.0
+    shmem_active.buf[:1] = struct.pack('?', is_active)
+    shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
+    shmem_output.buf[:8] = struct.pack('d', real_steer)
+    steering_thread = multiprocessing.Process(target=steer_emulator.async_steering,
+                                              args=(dt, steer_controller),
+                                              daemon=True)
+    steering_thread.start()
+    time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
 
     # Initialize vehicle starting point
     spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
@@ -92,27 +117,19 @@ def mapping_loop(client):
     leaving_distance = 10.0
     entering_distance = 4.0
 
-    start_time = time.time()
-    planning_last_iteration = start_time
-    control_last_iteration = start_time
-    planning_sample_time = 0.1
-    control_sample_time = 0.01
+    start_time = time.perf_counter()
+    last_iteration = start_time
+    sample_time = 0.1
     execution_time = 0.0
 
     idx = 0
     save_idx = 0
-    while planning_last_iteration - start_time < 300:
-        now = time.time()
-        planning_delta_time = now - planning_last_iteration
-        control_delta_time = now - control_last_iteration
+    while last_iteration - start_time < 300:
+        now = time.perf_counter()
+        delta_time = now - last_iteration
 
-        if control_delta_time > control_sample_time:
-            control_last_iteration = time.time()
-            compensated_signal = steer_controller.position_control(desired_steer, real_steer)
-            real_steer = steer_emulator.iterate_step(compensated_signal)
-
-        if planning_delta_time > planning_sample_time:
-            planning_last_iteration = time.time()
+        if delta_time > sample_time:
+            last_iteration = time.perf_counter()
             vehicle_pose = client.simGetVehiclePose()
             vehicle_to_map = spatial_utils.tf_matrix_from_airsim_object(vehicle_pose)
             map_to_vehicle = np.linalg.inv(vehicle_to_map)
@@ -197,10 +214,15 @@ def mapping_loop(client):
             desired_steer /= pursuit_follower.max_steering  # Convert range to [-1, 1]
             desired_steer = np.clip(desired_steer, -0.2, 0.2)  # Saturate
 
+            shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
+            real_steer = struct.unpack('d', shmem_output.buf[:8])[0]
+            inputs = np.append(inputs, desired_steer)
+            outputs = np.append(outputs, real_steer)
+
             car_controls.steering = real_steer
             client.setCarControls(car_controls)
-            execution_time = time.time() - planning_last_iteration
-            # print(execution_time, execution_time * curr_vel)
+            execution_time = time.perf_counter() - last_iteration
+            print(execution_time, execution_time * curr_vel)
 
             if idx > decimation:
                 cv2.imwrite(os.path.join(image_dest, 'left_' + str(save_idx) + '.png'), left_copy)
@@ -211,6 +233,18 @@ def mapping_loop(client):
             idx += 1
         else:
             time.sleep(0.001)
+
+    shmem_active.buf[:1] = struct.pack('?', False)
+    shmem_setpoint.unlink()
+    shmem_output.unlink()
+    shmem_active.unlink()
+    # saving_data = inputs.reshape((inputs.size, 1))
+    saving_data = np.append(inputs.reshape((inputs.size, 1)), outputs.reshape((outputs.size, 1)), axis=1)
+    with open('mapping_plant_steering_high_fps.csv', 'w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(['immediate'])
+        writer.writerows(saving_data)
+    print('saved csv data')
 
     if save_data:
         tracked_objects = {'cones': tracked_cones, 'pursuit': pursuit_follower.pursuit_points}
@@ -225,6 +259,7 @@ if __name__ == '__main__':
     airsim_client = airsim.CarClient()
     airsim_client.confirmConnection()
     airsim_client.enableApiControl(True)
+
     dump = mapping_loop(airsim_client)
 
     # Done! stop vehicle:
@@ -232,3 +267,4 @@ if __name__ == '__main__':
     vehicle_controls.throttle = 0.0
     vehicle_controls.brake = 1.0
     airsim_client.setCarControls(vehicle_controls)
+

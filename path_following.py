@@ -9,6 +9,10 @@ from path_control import StanleyFollower
 from pidf_controller import PidfControl
 from discrete_plant_emulator import DiscretePlant
 from matplotlib import pyplot as plt
+import multiprocessing
+from multiprocessing import shared_memory
+import struct
+import csv
 
 
 def following_loop(client, spline_obj=None):
@@ -49,16 +53,34 @@ def following_loop(client, spline_obj=None):
     # Define emulated steering plant and controller:
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
-    steer_emulator = DiscretePlant(0.01)
-    steer_controller = PidfControl(0.01)
-    steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    # dt = 0.01
+    # steer_emulator = DiscretePlant(dt, 1, 1)
+    # steer_controller = PidfControl(dt)
+    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    dt = 0.001
+    steer_emulator = DiscretePlant(dt, 10, 4)
+    steer_controller = PidfControl(dt)
+    steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
+
     steer_controller.set_extrema(0.01, 1.0)
     steer_controller.alpha = 0.01
+    shmem_active = shared_memory.SharedMemory(name='active_state', create=True, size=1)
+    shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=True, size=8)
+    shmem_output = shared_memory.SharedMemory(name='output_value', create=True, size=8)
+    is_active = True
     desired_steer = 0.0
     real_steer = 0.0
+    shmem_active.buf[:1] = struct.pack('?', is_active)
+    shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
+    shmem_output.buf[:8] = struct.pack('d', real_steer)
+    steering_thread = multiprocessing.Process(target=steer_emulator.async_steering,
+                                              args=(dt, steer_controller),
+                                              daemon=True)
+    steering_thread.start()
+    time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
 
     # Define speed controller:
-    speed_controller = PidfControl(0.1)
+    speed_controller = PidfControl(0.01)
     speed_controller.set_pidf(0.05, 0.0, 0.0, 0.044)
     speed_controller.set_extrema(0.01, 0.01)
     speed_controller.alpha = 0.01
@@ -72,27 +94,16 @@ def following_loop(client, spline_obj=None):
     car_data = np.ndarray(shape=(0, 4))
     control_data = np.ndarray(shape=(0, 8))
 
-    start_time = time.time()
-    planning_last_iteration = start_time
-    control_last_iteration = start_time
-    planning_sample_time = 0.1
-    control_sample_time = 0.01
-    execution_time = 0.0
+    start_time = time.perf_counter()
+    last_iteration = start_time
+    sample_time = 0.01
 
-    while planning_last_iteration - start_time < 10: #TODO change back to 300
-        now = time.time()
-        planning_delta_time = now - planning_last_iteration
-        control_delta_time = now - control_last_iteration
+    while last_iteration - start_time < 300: #TODO change back to 300
+        now = time.perf_counter()
+        delta_time = now - last_iteration
 
-        if control_delta_time > control_sample_time:
-            control_last_iteration = time.time()
-            compensated_signal = steer_controller.position_control(desired_steer, real_steer)
-            real_steer = steer_emulator.iterate_step(compensated_signal)
-            inputs = np.append(inputs, desired_steer)
-            outputs = np.append(outputs, real_steer)
-
-        if planning_delta_time > planning_sample_time:
-            planning_last_iteration = time.time()
+        if delta_time > sample_time:
+            last_iteration = time.perf_counter()
             vehicle_pose = client.simGetVehiclePose()
             vehicle_to_map = spatial_utils.tf_matrix_from_airsim_object(vehicle_pose)
             car_state = client.getCarState()
@@ -117,20 +128,34 @@ def following_loop(client, spline_obj=None):
             desired_steer /= follow_handler.max_steering  # Convert range to [-1, 1]
             desired_steer = np.clip(desired_steer, -0.3, 0.3)  # Saturate
 
+            shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
+            real_steer = struct.unpack('d', shmem_output.buf[:8])[0]
+            inputs = np.append(inputs, desired_steer)
+            outputs = np.append(outputs, real_steer)
+
             car_controls.throttle = throttle_command
-            car_controls.steering = real_steer #desired_steer
+            car_controls.steering = real_steer # desired_steer
             client.setCarControls(car_controls)
 
-        else:
-            time.sleep(0.001)
+    shmem_active.buf[:1] = struct.pack('?', False)
+    shmem_setpoint.unlink()
+    shmem_output.unlink()
+    shmem_active.unlink()
 
-    timeline = np.linspace(0, 10, len(inputs))
-    fig, ax = plt.subplots(1, 1)
-    ax.plot(timeline, inputs, '-r')
-    ax.plot(timeline, outputs, '-b')
-    ax.grid(True)
-    fig.show()
-    a=5
+    # saving_data = inputs.reshape((inputs.size, 1))
+    # saving_data = np.append(inputs.reshape((inputs.size, 1)), outputs.reshape((outputs.size, 1)), axis=1)
+    # with open('following_plant_steering.csv', 'w', newline='') as csv_file:
+    #     writer = csv.writer(csv_file)
+    #     writer.writerow(['inputs', 'outputs'])
+    #     writer.writerows(saving_data)
+    # print('saved csv data')
+    # timeline = np.linspace(0, 10, len(inputs))
+    # fig, ax = plt.subplots(1, 1)
+    # ax.plot(timeline, inputs, '-r')
+    # ax.plot(timeline, outputs, '-b')
+    # ax.grid(True)
+    # fig.show()
+    # plt.waitforbuttonpress()
 
     if save_data:
         with open('car_data.pickle', 'wb') as car_file:

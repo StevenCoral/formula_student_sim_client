@@ -9,7 +9,10 @@ import pickle
 import csv
 import threading
 import multiprocessing
+from multiprocessing import shared_memory
+import struct
 import airsim
+import sys
 
 
 class DiscretePlant:
@@ -39,71 +42,88 @@ class DiscretePlant:
         self.y_k1 = y
         return y
 
-    def async_steering(self, controller, setpoint, output, is_active):
+    def async_steering(self, sample_time, controller):
+        shmem_active = shared_memory.SharedMemory(name='active_state')
+        shmem_setpoint = shared_memory.SharedMemory(name='input_value')
+        shmem_output = shared_memory.SharedMemory(name='output_value')
+
+        output = struct.unpack('d', shmem_output.buf[:8])[0]
+        is_active = struct.unpack('?', shmem_active.buf[:1])[0]
+        last_iteration = time.perf_counter()
+
         while is_active:
-            compensated_signal = controller.position_control(setpoint.value, output.value)
-            output.value = self.iterate_step(compensated_signal)
-            time.sleep(0.009)
+            iteration_time = time.perf_counter() - last_iteration
+            if iteration_time > sample_time:
+                setpoint = struct.unpack('d', shmem_setpoint.buf[:8])[0]
+                compensated_signal = controller.position_control(setpoint, output)
+                output = self.iterate_step(compensated_signal)
+                shmem_output.buf[:8] = struct.pack('d', output)
+                is_active = struct.unpack('?', shmem_active.buf[:1])[0]
+                last_iteration = time.perf_counter()
 
 
 def run_subprocess():
-    duration = 4
+    duration = 4.0
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
-    steer_emulator = DiscretePlant(0.01)
-    steer_controller = PidfControl(0.01)
-    steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    # steer_emulator = DiscretePlant(0.01)
+    # steer_controller = PidfControl(0.01)
+    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
+    # steer_controller.set_extrema(0.01, 1.0)
+    # steer_controller.alpha = 0.1
+    dt = 0.001
+    steer_emulator = DiscretePlant(dt, 10, 4)
+    steer_controller = PidfControl(dt)
+    steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
     steer_controller.set_extrema(0.01, 1.0)
-    steer_controller.alpha = 0.1
+    steer_controller.alpha = 0.01
 
-    # connect to the AirSim simulator
-    client = airsim.CarClient()
-    client.confirmConnection()
-    client.enableApiControl(True)
-    # client.enableApiControl(False)
-    time.sleep(1.0)
-    car_controls = airsim.CarControls()
+    shmem_active = shared_memory.SharedMemory(name='active_state', create=True, size=1)
+    shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=True, size=8)
+    shmem_output = shared_memory.SharedMemory(name='output_value', create=True, size=8)
 
-    setpoint = multiprocessing.Value('f', 10.0)
-    output = multiprocessing.Value('f', 0.0)
-    is_active = multiprocessing.Value('B', int(1))
+    is_active = True
+    setpoint = 0.0
+    output = 0.0
+
+    shmem_active.buf[:1] = struct.pack('?', is_active)
+    shmem_setpoint.buf[:8] = struct.pack('d', setpoint)
+    shmem_output.buf[:8] = struct.pack('d', output)
+
     steering_thread = multiprocessing.Process(target=steer_emulator.async_steering,
-                                              args=(steer_controller, setpoint, output, is_active),
+                                              args=(dt, steer_controller),
                                               daemon=True)
     steering_thread.start()
     time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
 
     try:
-        current_time = time.time()
-        start_time = current_time
-        last_iteration = current_time
-        run_time = current_time - start_time
-        iteration_time = current_time - last_iteration
+        start_time = time.time()
+        last_iteration = time.perf_counter()
+        run_time = 0.0
         idx = 0
-        new_setpoint = 10.0
-        while run_time <= duration:
-            current_time = time.time()
-            iteration_time = current_time - last_iteration
-            run_time = current_time - start_time
-
-            if iteration_time >= 0.1:
+        setpoint = 10.0
+        while run_time < duration:
+            run_time = time.time() - start_time
+            iteration_time = time.perf_counter() - last_iteration
+            if iteration_time > dt:
                 if run_time > 1.0:
-                    new_setpoint = -20.0
+                    setpoint = -20.0
                 if run_time > 2.0:
-                    new_setpoint = 30.0
+                    setpoint = 30.0
                 if run_time > 3.0:
-                    new_setpoint = -40.0
+                    setpoint = -40.0
 
-                car_controls.steering = new_setpoint
-                client.setCarControls(car_controls)
+                shmem_setpoint.buf[:8] = struct.pack('d', setpoint)
+                output = struct.unpack('d', shmem_output.buf[:8])[0]
 
-                setpoint.value = new_setpoint
+                inputs = np.append(inputs, setpoint)
+                outputs = np.append(outputs, output)
+                # print(iteration_time)
+                last_iteration = time.perf_counter()
                 idx += 1
-                inputs = np.append(inputs, setpoint.value)
-                outputs = np.append(outputs, output.value)
-                last_iteration = time.time()
 
-        is_active.value = int(0)  # Stop calculating angle
+        is_active = False  # Stop calculating angle
+        shmem_active.buf[:1] = struct.pack('?', is_active)
         # Plot the result
         timeline = np.linspace(0, duration, idx)
         fig, ax = plt.subplots(1, 1)
@@ -111,23 +131,23 @@ def run_subprocess():
         ax.plot(timeline, outputs, '-b')
         ax.grid(True)
         fig.show()
-        pass
-
-    except KeyboardInterrupt:
-        is_active.value = int(0)  # Stop calculating angle
-        time.sleep(1.0)
+        plt.waitforbuttonpress()
 
     finally:
-        is_active.value = int(0)  # Stop calculating angle
+        shmem_active.buf[:1] = struct.pack('?', False)
+        shmem_setpoint.unlink()
+        shmem_output.unlink()
+        shmem_active.unlink()
         time.sleep(1.0)
 
 
 def run_offline():
-    duration = 4
+    duration = 4.0
+    dt = 0.001
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
-    steer_emulator = DiscretePlant(0.001, 10, 4)
-    steer_controller = PidfControl(0.001)
+    steer_emulator = DiscretePlant(dt, 10, 4)
+    steer_controller = PidfControl(dt)
     # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
     steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
     steer_controller.set_extrema(0.01, 1.0)
@@ -142,16 +162,16 @@ def run_offline():
     run_time = current_time - start_time
     iteration_time = current_time - last_iteration
 
-    while idx < duration * 1000:
+    while idx < duration / dt:
         current_time = time.time()
         iteration_time = current_time - last_iteration
         run_time = current_time - start_time
 
-        if idx > 1.0 * 1000:
+        if idx > 1.0 / dt:
             setpoint = -20.0
-        if idx > 2.0 * 1000:
+        if idx > 2.0 / dt:
             setpoint = 30.0
-        if idx > 3.0 * 1000:
+        if idx > 3.0 / dt:
             setpoint = -40.0
 
         compensated_signal = steer_controller.position_control(setpoint, output)
@@ -163,20 +183,19 @@ def run_offline():
         last_iteration = time.time()
 
     # Plot the result
-    # save_data = np.append(inputs.reshape((inputs.size, 1)), outputs.reshape((outputs.size, 1)), axis=1)
-    # #{'inputs': inputs, 'outputs': outputs}
-    # with open('discrete.csv', 'w', newline='') as csv_file:
-    #     writer = csv.writer(csv_file)
-    #     writer.writerow(['inputs', 'outputs'])
-    #     writer.writerows(save_data)
-    # print('saved csv data')
+    save_data = np.append(inputs.reshape((inputs.size, 1)), outputs.reshape((outputs.size, 1)), axis=1)
+    with open('discrete.csv', 'w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(['inputs', 'outputs'])
+        writer.writerows(save_data)
+    print('saved csv data')
     timeline = np.linspace(0, duration, idx)
     fig, ax = plt.subplots(1, 1)
     ax.plot(timeline, inputs, '-r')
     ax.plot(timeline, outputs, '-b')
     ax.grid(True)
     fig.show()
-    pass
+    plt.waitforbuttonpress()
 
 
 if __name__ == '__main__':
