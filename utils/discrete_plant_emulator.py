@@ -3,16 +3,11 @@ from spline_utils import PathSpline
 import numpy as np
 from matplotlib import pyplot as plt
 from pidf_controller import PidfControl
-from scipy.spatial.transform import Rotation as Rot
 import time
-import pickle
 import csv
-import threading
 import multiprocessing
 from multiprocessing import shared_memory
 import struct
-import airsim
-import sys
 
 
 class DiscretePlant:
@@ -43,9 +38,10 @@ class DiscretePlant:
         return y
 
     def async_steering(self, sample_time, controller):
-        shmem_active = shared_memory.SharedMemory(name='active_state')
-        shmem_setpoint = shared_memory.SharedMemory(name='input_value')
-        shmem_output = shared_memory.SharedMemory(name='output_value')
+        # Cannot use SteeringProcManager() due to a circular import...
+        shmem_active = shared_memory.SharedMemory(name='active_state', create=False)
+        shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=False)
+        shmem_output = shared_memory.SharedMemory(name='output_value', create=False)
 
         output = struct.unpack('d', shmem_output.buf[:8])[0]
         is_active = struct.unpack('?', shmem_active.buf[:1])[0]
@@ -60,6 +56,10 @@ class DiscretePlant:
                 shmem_output.buf[:8] = struct.pack('d', output)
                 is_active = struct.unpack('?', shmem_active.buf[:1])[0]
                 last_iteration = time.perf_counter()
+
+        shmem_active.close()
+        shmem_setpoint.close()
+        shmem_output.close()
 
 
 def run_subprocess():
@@ -147,9 +147,11 @@ def run_offline():
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
     steer_emulator = DiscretePlant(dt, 10, 4)
+    # steer_emulator = DiscretePlant(dt, 1, 1)
     steer_controller = PidfControl(dt)
     # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
-    steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
+    # steer_controller.set_pidf(600.0, 0.0, 35.0, 0.0)
+    steer_controller.set_pidf(1000.0, 0.0, 15.0, 0.0)
     steer_controller.set_extrema(0.01, 1.0)
     steer_controller.alpha = 0.01
 

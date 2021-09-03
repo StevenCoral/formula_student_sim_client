@@ -5,6 +5,11 @@ from scipy.spatial.transform import Rotation as Rot
 import spatial_utils
 import time
 import pickle
+import struct
+import multiprocessing
+from multiprocessing import shared_memory
+from pidf_controller import PidfControl
+from discrete_plant_emulator import DiscretePlant
 
 
 class StanleyFollower:
@@ -108,43 +113,95 @@ class PursuitFollower:
         return steering_angle
 
 
-class ProximitySteer:  #TODO remove
-    def __init__(self, front=1.0, sideways=1.0):
-        self.front_distance = front
-        self.sideways_distance = sideways
-        self.max_steering = np.deg2rad(40.0)  # Radians
-        self.steering_coeff = 1.0
+class SteeringProcManager:
+    shmem_active = None
+    shmem_setpoint = None
+    shmem_output = None
 
-    def calculate_steering(self, detections):
-        numpy_dets = np.asarray(detections)  # To support also lists
-        left_detections = self.filter_side(numpy_dets, True)
-        right_detections = self.filter_side(numpy_dets, False)
-        left_min = np.min(np.linalg.norm(left_detections))
-        right_min = np.min(np.linalg.norm(right_detections))
-        steering = self.steering_coeff * (left_min - right_min)
-        direction = 'left' if steering > 0 else 'right'
-        print(direction, steering)
-        return steering
+    steer_emulator = None
+    steer_controller = None
+    steering_thread = None
 
-    def filter_side(self, detections, left_side):
-        if left_side:
-            sideways_filter = np.bitwise_and(detections[:, 1] > 0.0, detections[:, 1] < self.sideways_distance)
-        else:  # Only left or right...
-            sideways_filter = np.bitwise_and(detections[:, 1] < 0.0, detections[:, 1] > -self.sideways_distance)
+    memories_exist = False
 
-        front_filter = np.bitwise_and(detections[:, 0] > 0.0, detections[:, 0] < self.front_distance)
-        filtered_indices = np.bitwise_and(sideways_filter, front_filter)
+    def __init__(self):
+        self.create_steering_procedure()
+        pass
 
-        return detections[filtered_indices, :]
+    def __del__(self):
+        self.terminate_steering_procedure()
 
-    # How do we get the trackers back in vehicle frame?
-    # Append raw lidar detections to a new list if they correspond to active trackers?
+    @classmethod
+    def create_steering_procedure(cls):
+        # Everything below is hardcoded, changes can be made by adding arguments:
+        if not cls.memories_exist:
+            cls.memories_exist = True
+            try:
+                cls.shmem_active = shared_memory.SharedMemory(name='active_state', create=True, size=1)
+                cls.shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=True, size=8)
+                cls.shmem_output = shared_memory.SharedMemory(name='output_value', create=True, size=8)
+            except FileExistsError:
+                cls.shmem_active = shared_memory.SharedMemory(name='active_state', create=False, size=1)
+                cls.shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=False, size=8)
+                cls.shmem_output = shared_memory.SharedMemory(name='output_value', create=False, size=8)
+            is_active = True
+            desired_steer = 0.0
+            real_steer = 0.0
+            cls.shmem_active.buf[:1] = struct.pack('?', is_active)
+            cls.shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
+            cls.shmem_output.buf[:8] = struct.pack('d', real_steer)
+
+            sample_time = 0.001
+            cls.steer_emulator = DiscretePlant(sample_time, 10, 4)
+            cls.steer_controller = PidfControl(sample_time)
+            cls.steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
+            cls.steer_controller.set_extrema(0.01, 1.0)
+            cls.steer_controller.alpha = 0.01
+
+            cls.steering_thread = multiprocessing.Process(target=cls.steer_emulator.async_steering,
+                                                          args=(sample_time, cls.steer_controller),
+                                                          daemon=True)
+            cls.steering_thread.start()
+            time.sleep(1.0)  # New process takes a lot of time to "jumpstart"
+
+    @classmethod
+    def retrieve_shared_memories(cls):
+        cls.create_steering_procedure()
+
+        shmem_active = shared_memory.SharedMemory(name='active_state', create=False)
+        shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=False)
+        shmem_output = shared_memory.SharedMemory(name='output_value', create=False)
+
+        return shmem_active, shmem_setpoint, shmem_output
+
+    @classmethod
+    def detach_shared_memories(cls, shared_memories_list=None):
+        if shared_memories_list is None:
+            cls.shmem_active.buf[:1] = struct.pack('?', False)
+            cls.shmem_active.close()
+            cls.shmem_setpoint.close()
+            cls.shmem_output.close()
+        else:
+            for shmem in shared_memories_list:
+                shmem.close()
+
+    @classmethod
+    def terminate_steering_procedure(cls):
+        # Should only be used if all processes have called detach_shared_memories!
+        if cls.memories_exist:
+            cls.shmem_active.buf[:1] = struct.pack('?', False)
+            cls.shmem_active.unlink()
+            cls.shmem_setpoint.unlink()
+            cls.shmem_output.unlink()
+            cls.steering_thread.terminate()
+            cls.memories_exist = False
 
 
 def calc_dead_reckoning(car_pos, car_speed, heading, yaw_rate, delta_time):
     updated_heading = heading + delta_time * yaw_rate
     updated_pos = car_pos + delta_time * car_speed * np.array([np.cos(updated_heading), np.sin(updated_heading)])
     return updated_pos, updated_heading
+
 
 if __name__ == '__main__':
 

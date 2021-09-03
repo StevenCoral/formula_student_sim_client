@@ -10,10 +10,6 @@ import camera_utils
 import path_control
 import os
 import cv2
-from pidf_controller import PidfControl
-from discrete_plant_emulator import DiscretePlant
-import multiprocessing
-from multiprocessing import shared_memory
 import struct
 import csv
 
@@ -53,7 +49,7 @@ def mapping_loop(client):
     global decimation
     image_dest = os.path.join(os.getcwd(), 'images')
     data_dest = os.path.join(os.getcwd(), 'test')
-    save_data = False
+    save_data = True
 
     # Constant transform matrices:
     # Notating A_to_B means that taking a vector in frame A and left-multiplying by the matrix
@@ -73,35 +69,10 @@ def mapping_loop(client):
     pursuit_follower = path_control.PursuitFollower(2.0, 6.0)
     pursuit_follower.k_steer = 0.5
 
-    # Define emulated steering plant and controller:
+    # Open access to shared memory blocks:
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
-    # dt = 0.01
-    # steer_emulator = DiscretePlant(dt, 1, 1)
-    # steer_controller = PidfControl(dt)
-    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
-    # steer_controller.set_extrema(0.01, 1.0)
-    # steer_controller.alpha = 0.01
-    dt = 0.001
-    steer_emulator = DiscretePlant(dt, 10, 4)
-    steer_controller = PidfControl(dt)
-    steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
-    steer_controller.set_extrema(0.01, 1.0)
-    steer_controller.alpha = 0.01
-    shmem_active = shared_memory.SharedMemory(name='active_state', create=True, size=1)
-    shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=True, size=8)
-    shmem_output = shared_memory.SharedMemory(name='output_value', create=True, size=8)
-    is_active = True
-    desired_steer = 0.0
-    real_steer = 0.0
-    shmem_active.buf[:1] = struct.pack('?', is_active)
-    shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
-    shmem_output.buf[:8] = struct.pack('d', real_steer)
-    steering_thread = multiprocessing.Process(target=steer_emulator.async_steering,
-                                              args=(dt, steer_controller),
-                                              daemon=True)
-    steering_thread.start()
-    time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
+    shmem_active, shmem_setpoint, shmem_output = path_control.SteeringProcManager.retrieve_shared_memories()
 
     # Initialize vehicle starting point
     spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
@@ -216,13 +187,13 @@ def mapping_loop(client):
 
             shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
             real_steer = struct.unpack('d', shmem_output.buf[:8])[0]
-            inputs = np.append(inputs, desired_steer)
-            outputs = np.append(outputs, real_steer)
+            # inputs = np.append(inputs, desired_steer)
+            # outputs = np.append(outputs, real_steer)
 
             car_controls.steering = real_steer
             client.setCarControls(car_controls)
             execution_time = time.perf_counter() - last_iteration
-            print(execution_time, execution_time * curr_vel)
+            # print(execution_time)
 
             if idx > decimation:
                 cv2.imwrite(os.path.join(image_dest, 'left_' + str(save_idx) + '.png'), left_copy)
@@ -234,21 +205,9 @@ def mapping_loop(client):
         else:
             time.sleep(0.001)
 
-    shmem_active.buf[:1] = struct.pack('?', False)
-    shmem_setpoint.unlink()
-    shmem_output.unlink()
-    shmem_active.unlink()
-    # saving_data = inputs.reshape((inputs.size, 1))
-    saving_data = np.append(inputs.reshape((inputs.size, 1)), outputs.reshape((outputs.size, 1)), axis=1)
-    with open('mapping_plant_steering_high_fps.csv', 'w', newline='') as csv_file:
-        writer = csv.writer(csv_file)
-        writer.writerow(['immediate'])
-        writer.writerows(saving_data)
-    print('saved csv data')
-
     if save_data:
         tracked_objects = {'cones': tracked_cones, 'pursuit': pursuit_follower.pursuit_points}
-        with open(os.path.join(data_dest, 'tracker_session.pickle'), 'wb') as pickle_file:
+        with open(os.path.join(data_dest, 'mapping_session.pickle'), 'wb') as pickle_file:
             pickle.dump(tracked_objects, pickle_file)
         print('pickle saved')
 
@@ -260,9 +219,11 @@ if __name__ == '__main__':
     airsim_client.confirmConnection()
     airsim_client.enableApiControl(True)
 
+    steering_procedure_manager = path_control.SteeringProcManager()
     dump = mapping_loop(airsim_client)
 
     # Done! stop vehicle:
+    steering_procedure_manager.terminate_steering_procedure()
     vehicle_controls = airsim_client.getCarControls()
     vehicle_controls.throttle = 0.0
     vehicle_controls.brake = 1.0

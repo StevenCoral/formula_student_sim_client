@@ -5,19 +5,15 @@ import airsim
 import time
 import pickle
 import spatial_utils
-from path_control import StanleyFollower
+import path_control
 from pidf_controller import PidfControl
-from discrete_plant_emulator import DiscretePlant
-from matplotlib import pyplot as plt
-import multiprocessing
-from multiprocessing import shared_memory
 import struct
 import csv
 
 
 def following_loop(client, spline_obj=None):
 
-    save_data = False
+    save_data = True
 
     if spline_obj is None:
         # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" location in unreal:
@@ -43,41 +39,17 @@ def following_loop(client, spline_obj=None):
         spatial_utils.set_airsim_pose(client, [0.0, 0.0], [90.0, 0, 0])
 
     # Define Stanley-method parameters:
-    follow_handler = StanleyFollower(spline_obj)
+    follow_handler = path_control.StanleyFollower(spline_obj)
     follow_handler.k_vel *= 3.0
     follow_handler.max_velocity = 15.0  # m/s
     follow_handler.min_velocity = 10.0  # m/s
     follow_handler.lookahead = 5.0  # meters
     follow_handler.k_steer = 2.0  # Stanley steering coefficient
 
-    # Define emulated steering plant and controller:
+    # Open access to shared memory blocks:
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
-    # dt = 0.01
-    # steer_emulator = DiscretePlant(dt, 1, 1)
-    # steer_controller = PidfControl(dt)
-    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
-    dt = 0.001
-    steer_emulator = DiscretePlant(dt, 10, 4)
-    steer_controller = PidfControl(dt)
-    steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
-
-    steer_controller.set_extrema(0.01, 1.0)
-    steer_controller.alpha = 0.01
-    shmem_active = shared_memory.SharedMemory(name='active_state', create=True, size=1)
-    shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=True, size=8)
-    shmem_output = shared_memory.SharedMemory(name='output_value', create=True, size=8)
-    is_active = True
-    desired_steer = 0.0
-    real_steer = 0.0
-    shmem_active.buf[:1] = struct.pack('?', is_active)
-    shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
-    shmem_output.buf[:8] = struct.pack('d', real_steer)
-    steering_thread = multiprocessing.Process(target=steer_emulator.async_steering,
-                                              args=(dt, steer_controller),
-                                              daemon=True)
-    steering_thread.start()
-    time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
+    shmem_active, shmem_setpoint, shmem_output = path_control.SteeringProcManager.retrieve_shared_memories()
 
     # Define speed controller:
     speed_controller = PidfControl(0.01)
@@ -91,8 +63,7 @@ def following_loop(client, spline_obj=None):
     entering_distance = 4.0
 
     car_controls = airsim.CarControls()
-    car_data = np.ndarray(shape=(0, 4))
-    control_data = np.ndarray(shape=(0, 8))
+    car_data = np.ndarray(shape=(0, 8))
 
     start_time = time.perf_counter()
     last_iteration = start_time
@@ -130,49 +101,42 @@ def following_loop(client, spline_obj=None):
 
             shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
             real_steer = struct.unpack('d', shmem_output.buf[:8])[0]
-            inputs = np.append(inputs, desired_steer)
-            outputs = np.append(outputs, real_steer)
+            # inputs = np.append(inputs, desired_steer)
+            # outputs = np.append(outputs, real_steer)
 
             car_controls.throttle = throttle_command
             car_controls.steering = real_steer # desired_steer
             client.setCarControls(car_controls)
 
-    shmem_active.buf[:1] = struct.pack('?', False)
-    shmem_setpoint.unlink()
-    shmem_output.unlink()
-    shmem_active.unlink()
-
-    # saving_data = inputs.reshape((inputs.size, 1))
-    # saving_data = np.append(inputs.reshape((inputs.size, 1)), outputs.reshape((outputs.size, 1)), axis=1)
-    # with open('following_plant_steering.csv', 'w', newline='') as csv_file:
-    #     writer = csv.writer(csv_file)
-    #     writer.writerow(['inputs', 'outputs'])
-    #     writer.writerows(saving_data)
-    # print('saved csv data')
-    # timeline = np.linspace(0, 10, len(inputs))
-    # fig, ax = plt.subplots(1, 1)
-    # ax.plot(timeline, inputs, '-r')
-    # ax.plot(timeline, outputs, '-b')
-    # ax.grid(True)
-    # fig.show()
-    # plt.waitforbuttonpress()
+            car_data = np.append(car_data,
+                                 [[curr_pos[0], curr_pos[1], curr_rot[0],
+                                   desired_speed, car_state.speed,
+                                   desired_steer, real_steer, throttle_command]],
+                                 axis=0)
 
     if save_data:
-        with open('car_data.pickle', 'wb') as car_file:
-            pickle.dump(car_data, car_file)
-        print('saved car data')
-        with open('control_data.pickle', 'wb') as control_file:
-            pickle.dump(control_data, control_file)
-        print('saved control data')
+        pickling_objects = {'path': follow_handler.path, 'car_data': car_data}
+        with open('following_session.pickle', 'wb') as pickle_file:
+            pickle.dump(pickling_objects, pickle_file)
+        print('saved pickle data')
+        with open('car_data.csv', 'w', newline='') as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(['x', 'y', 'heading', 'v_desired', 'v_delivered',
+                             's_desired', 's_delivered', 'throttle'])
+            writer.writerows(car_data)
+        print('saved csv data')
 
 
 if __name__ == '__main__':
     airsim_client = airsim.CarClient()
     airsim_client.confirmConnection()
     airsim_client.enableApiControl(True)
+
+    steering_procedure_manager = path_control.SteeringProcManager()
     following_loop(airsim_client)
 
     # Done! stop vehicle:
+    steering_procedure_manager.terminate_steering_procedure()
     vehicle_controls = airsim_client.getCarControls()
     vehicle_controls.throttle = 0.0
     vehicle_controls.brake = 1.0
