@@ -60,12 +60,14 @@ class ConeTracker(ObjectTracker):
         self.color = ConeTracker.COLOR_UNKNOWN
         self.color_history = [ConeTracker.COLOR_UNKNOWN]
 
-    def determine_color(self, hsv_image, default_result=0):
+    def determine_color(self, hsv_image):
         resulting_color = estimate_cone_color(hsv_image)
         if resulting_color != self.COLOR_UNKNOWN:
+            # Only change colors if a valid result is determined.
             self.color = resulting_color
         else:
-            self.color = default_result
+            pass
+
         self.color_history.append(resulting_color)
         return resulting_color
 

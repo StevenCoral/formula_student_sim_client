@@ -101,7 +101,6 @@ class PathSpline:
 
 
 def generate_path_points(mapping_data):
-    #TODO advance left and right and disqualify by distance to avoid assumption at the bottom of this function
     left_points = np.ndarray(shape=(0, 2))
     right_points = np.ndarray(shape=(0, 2))
     unknown_points = np.ndarray(shape=(0, 2))
@@ -113,6 +112,7 @@ def generate_path_points(mapping_data):
             elif tracked_obj.color == tracker_utils.ConeTracker.COLOR_YELLOW:
                 right_points = np.append(right_points, point.reshape(1, 2), axis=0)
             else:
+                # Qualify unknown cones as the closest color
                 left_dist = np.linalg.norm(left_points - point, axis=1)
                 right_dist = np.linalg.norm(right_points - point, axis=1)
                 if np.min(left_dist) < np.min(right_dist):

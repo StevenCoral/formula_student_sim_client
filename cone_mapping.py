@@ -48,8 +48,8 @@ def process_camera(lidar_to_cam, vector, camera, image, tracked_cone, idx, copy_
 def mapping_loop(client):
     global decimation
     image_dest = os.path.join(os.getcwd(), 'images')
-    data_dest = os.path.join(os.getcwd(), 'test')
-    save_data = True
+    data_dest = os.path.join(os.getcwd(), 'recordings')
+    save_data = False
 
     # Constant transform matrices:
     # Notating A_to_B means that taking a vector in frame A and left-multiplying by the matrix
@@ -140,7 +140,6 @@ def mapping_loop(client):
                 db = DBSCAN(eps=0.3, min_samples=3).fit(filtered_pc)
                 curr_segments, curr_centroids, curr_labels = dbscan_utils.collate_segmentation(db, 1.0)
                 curr_centroids.sort(key=lambda x: np.linalg.norm(x))
-                curr_tracked = np.ndarray(shape=(0, 3))
 
                 # Go through the DBSCAN centroids of the current frame:
                 for centroid_airsim in curr_centroids:
@@ -160,7 +159,6 @@ def mapping_loop(client):
                                 # Estimate color only for active cones, within camera frustum.
                                 # Color estimation is done in the camera frame of reference.
                                 centroid_vehicle = np.matmul(lidar_to_vehicle, centroid_lidar)[:3]
-                                # curr_tracked = np.append(curr_tracked, centroid_vehicle.reshape(1, 3), axis=0)
                                 #TODO remove debug items from process_camera
                                 if centroid_vehicle[1] > 0:  # Positive y means left side.
                                     cone_color = process_camera(lidar_to_left_cam,
@@ -211,7 +209,7 @@ def mapping_loop(client):
             pickle.dump(tracked_objects, pickle_file)
         print('pickle saved')
 
-    return tracked_cones
+    return tracked_cones, pursuit_follower.pursuit_points
 
 
 if __name__ == '__main__':

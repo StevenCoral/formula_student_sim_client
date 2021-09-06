@@ -9,10 +9,11 @@ import path_control
 from pidf_controller import PidfControl
 import struct
 import csv
+import os
 
 
 def following_loop(client, spline_obj=None):
-
+    data_dest = os.path.join(os.getcwd(), 'recordings')
     save_data = True
 
     if spline_obj is None:
@@ -40,7 +41,7 @@ def following_loop(client, spline_obj=None):
 
     # Define Stanley-method parameters:
     follow_handler = path_control.StanleyFollower(spline_obj)
-    follow_handler.k_vel *= 3.0
+    # follow_handler.k_vel *= 3.0
     follow_handler.max_velocity = 15.0  # m/s
     follow_handler.min_velocity = 10.0  # m/s
     follow_handler.lookahead = 5.0  # meters
@@ -114,9 +115,9 @@ def following_loop(client, spline_obj=None):
                                    desired_steer, real_steer, throttle_command]],
                                  axis=0)
 
+    pickling_objects = {'path': follow_handler.path, 'car_data': car_data}
     if save_data:
-        pickling_objects = {'path': follow_handler.path, 'car_data': car_data}
-        with open('following_session.pickle', 'wb') as pickle_file:
+        with open(os.path.join(data_dest, 'following_session.pickle'), 'wb') as pickle_file:
             pickle.dump(pickling_objects, pickle_file)
         print('saved pickle data')
         with open('car_data.csv', 'w', newline='') as csv_file:
@@ -125,6 +126,7 @@ def following_loop(client, spline_obj=None):
                              's_desired', 's_delivered', 'throttle'])
             writer.writerows(car_data)
         print('saved csv data')
+    return pickling_objects, car_data
 
 
 if __name__ == '__main__':
