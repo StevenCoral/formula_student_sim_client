@@ -31,7 +31,7 @@ if __name__ == '__main__':
         car_controls.throttle = 0.0
         airsim_client.setCarControls(car_controls)
 
-        # Save
+        # Save mappind data
         tracked_objects = {'cones': mapping_data, 'pursuit': pursuit_points}
         with open(os.path.join(data_dest, 'mapping_session.pickle'), 'wb') as pickle_file:
             pickle.dump(tracked_objects, pickle_file)
@@ -55,7 +55,7 @@ if __name__ == '__main__':
         airsim_client.setCarControls(car_controls)
         steering_procedure_manager.terminate_steering_procedure()
 
-        # save
+        # Save following data
         with open(os.path.join(data_dest, 'following_session.pickle'), 'wb') as pickle_file:
             pickle.dump(pickling_objects, pickle_file)
         print('saved pickle data')
@@ -65,7 +65,4 @@ if __name__ == '__main__':
                              's_desired', 's_delivered', 'throttle'])
             writer.writerows(car_data)
         print('saved csv data')
-
-        time.sleep(1.0)
-
 

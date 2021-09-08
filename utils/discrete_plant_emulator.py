@@ -159,15 +159,8 @@ def run_offline():
     output = 0.0
     idx = 0
     current_time = time.time()
-    start_time = current_time
-    last_iteration = current_time
-    run_time = current_time - start_time
-    iteration_time = current_time - last_iteration
 
     while idx < duration / dt:
-        current_time = time.time()
-        iteration_time = current_time - last_iteration
-        run_time = current_time - start_time
 
         if idx > 1.0 / dt:
             setpoint = -20.0
@@ -182,11 +175,10 @@ def run_offline():
         idx += 1
         inputs = np.append(inputs, setpoint)
         outputs = np.append(outputs, output)
-        last_iteration = time.time()
 
     # Plot the result
     save_data = np.append(inputs.reshape((inputs.size, 1)), outputs.reshape((outputs.size, 1)), axis=1)
-    with open('discrete.csv', 'w', newline='') as csv_file:
+    with open('compensated_discrete.csv', 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['inputs', 'outputs'])
         writer.writerows(save_data)
@@ -197,6 +189,7 @@ def run_offline():
     ax.plot(timeline, outputs, '-b')
     ax.grid(True)
     fig.show()
+    a=5
     plt.waitforbuttonpress()
 
 

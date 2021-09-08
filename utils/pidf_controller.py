@@ -1,3 +1,4 @@
+#
 def filter_value(current_val, previous_val, alpha):
     return previous_val * alpha + current_val * (1.0-alpha)
 
@@ -22,7 +23,7 @@ class PidfControl:
 
         self.integral = 0.0
         self.max_integral = 1.0
-        self.min_setpoint = 1.0
+        self.min_setpoint = 0.0
 
     def set_pidf(self, kp, ki, kd, kf):
         self.kp = kp  # Proportional

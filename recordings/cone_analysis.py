@@ -69,6 +69,7 @@ else:
             mapping_data = pickle.load(handle)
         cone_data = cone_data + mapping_data['cones']
 
+csv_folder = os.path.join(os.getcwd(), 'csv')
 inactive_cones = []
 yellow_cones = []
 blue_cones = []
@@ -106,13 +107,13 @@ if single_run:
     smoothed_spline.generate_spline(amount=0.1, meters=True, smoothing=1)
 
     detected_cones = np.append(blue_points[:min_length, :], yellow_points[:min_length, :], axis=1)
-    with open(os.path.join(os.getcwd(), 'detected_cone_locations.csv'), 'w', newline='') as csv_file:
+    with open(os.path.join(csv_folder, 'detected_cone_locations.csv'), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['yellow x', 'yellow y', 'blue x', 'blue y'])
         writer.writerows(detected_cones)
 
     pursuit_points = np.asarray(mapping_data['pursuit'])
-    with open(os.path.join(os.getcwd(), 'pursuit_points.csv'), 'w', newline='') as csv_file:
+    with open(os.path.join(csv_folder, 'pursuit_points.csv'), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['x', 'y', 'z'])
         writer.writerows(pursuit_points)
@@ -124,7 +125,7 @@ if single_run:
     spline_points = np.append(spline_points,
                               smoothed_spline.curvature.reshape(spline_length, 1),
                               axis=1)
-    with open(os.path.join(os.getcwd(), 'spline_points.csv'), 'w', newline='') as csv_file:
+    with open(os.path.join(csv_folder, 'spline_points.csv'), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['x', 'y', 'curvature'])
         writer.writerows(spline_points)
@@ -139,7 +140,7 @@ if single_run:
             lookahead_idx = lookahead_idx - smoothed_spline.array_length
         lookahead_indices = np.append(lookahead_indices, lookahead_idx)
 
-    with open(os.path.join(os.getcwd(), 'lookahead_indices.csv'), 'w', newline='') as csv_file:
+    with open(os.path.join(csv_folder, 'lookahead_indices.csv'), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['index'])
         writer.writerows(lookahead_indices.reshape(lookahead_indices.size, 1))
@@ -154,24 +155,24 @@ else:
     yellow_errors = calculate_errors(yellow_cones, true_yellows)
 
     blue_dets = np.array([blue_dets])
-    with open(os.path.join(os.getcwd(), 'blue_detections.csv'), 'w', newline='') as csv_file:
+    with open(os.path.join(csv_folder, 'blue_detections.csv'), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['detection_count'])
         writer.writerows(blue_dets)
 
-    with open(os.path.join(os.getcwd(), 'blue_errors.csv'), 'w', newline='') as csv_file:
+    with open(os.path.join(csv_folder, 'blue_errors.csv'), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['detection_errors'])
         writer.writerows(blue_errors.reshape(blue_errors.size, 1))
 
     yellow_dets = np.array([yellow_dets])
-    with open(os.path.join(os.getcwd(), 'yellow_detections.csv'), 'w', newline='') as csv_file:
+    with open(os.path.join(csv_folder, 'yellow_detections.csv'), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['detection_count'])
         writer.writerows(yellow_dets)
     print('saved csv data')
 
-    with open(os.path.join(os.getcwd(), 'yellow_errors.csv'), 'w', newline='') as csv_file:
+    with open(os.path.join(csv_folder, 'yellow_errors.csv'), 'w', newline='') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['detection_errors'])
         writer.writerows(yellow_errors.reshape(yellow_errors.size, 1))
@@ -179,9 +180,8 @@ else:
     # blue_hist = np.histogram(blue_errors, bins=100)
     # plt.hist(blue_dets, 20)
     # plt.waitforbuttonpress()
-# detected cones, histograms, pursuit points, spline points, spline curvatures
 
-a=5
+a = 5
 
 # fig, ax = plt.subplots(1, 1)
 # ax.grid(True)

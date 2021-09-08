@@ -13,7 +13,7 @@ if __name__ == '__main__':
 
     # Detect the cones and spline points, and return their location:
     print('Starting on-the-fly cone mapping with constant speed and steering procedure.')
-    mapping_data = cone_mapping.mapping_loop(airsim_client)
+    mapping_data, pursuit_points = cone_mapping.mapping_loop(airsim_client)
     print('Mapping complete!')
 
     # Stop until spline generation is complete:

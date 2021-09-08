@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 from spline_utils import PathSpline
 import numpy as np
 import airsim
@@ -14,12 +13,15 @@ import os
 
 def following_loop(client, spline_obj=None):
     data_dest = os.path.join(os.getcwd(), 'recordings')
-    save_data = True
+    os.makedirs(data_dest, exist_ok=True)
+    save_data = False
 
+    # In case the file is run as standalone, no mapping procedure was made.
+    # Hence, we need to build the spline path out of known cone locations.
     if spline_obj is None:
-        # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" location in unreal:
-        starting_x = 12
-        starting_y = 19
+        # Airsim always spawns at zero. Must compensate using "playerstart" location in unreal:
+        starting_x = 12.1
+        starting_y = 18.7
         spline_origin_x = 12
         spline_origin_y = 25
         x_offset = spline_origin_x - starting_x
@@ -41,21 +43,19 @@ def following_loop(client, spline_obj=None):
 
     # Define Stanley-method parameters:
     follow_handler = path_control.StanleyFollower(spline_obj)
-    # follow_handler.k_vel *= 3.0
+    follow_handler.k_vel *= 2.0  # Arbitrary
     follow_handler.max_velocity = 15.0  # m/s
     follow_handler.min_velocity = 10.0  # m/s
     follow_handler.lookahead = 5.0  # meters
     follow_handler.k_steer = 2.0  # Stanley steering coefficient
 
     # Open access to shared memory blocks:
-    inputs = np.array([], dtype=float)
-    outputs = np.array([], dtype=float)
     shmem_active, shmem_setpoint, shmem_output = path_control.SteeringProcManager.retrieve_shared_memories()
 
     # Define speed controller:
     speed_controller = PidfControl(0.01)
-    speed_controller.set_pidf(0.05, 0.0, 0.0, 0.044)
-    speed_controller.set_extrema(0.01, 0.01)
+    speed_controller.set_pidf(0.01, 0.01, 0.0, 0.043)
+    speed_controller.set_extrema(min_setpoint=0.01, max_integral=0.01)
     speed_controller.alpha = 0.01
 
     # Initialize loop variables:
@@ -70,7 +70,7 @@ def following_loop(client, spline_obj=None):
     last_iteration = start_time
     sample_time = 0.01
 
-    while last_iteration - start_time < 300: #TODO change back to 300
+    while last_iteration - start_time < 300:
         now = time.perf_counter()
         delta_time = now - last_iteration
 
@@ -102,18 +102,17 @@ def following_loop(client, spline_obj=None):
 
             shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
             real_steer = struct.unpack('d', shmem_output.buf[:8])[0]
-            # inputs = np.append(inputs, desired_steer)
-            # outputs = np.append(outputs, real_steer)
 
             car_controls.throttle = throttle_command
-            car_controls.steering = real_steer # desired_steer
+            car_controls.steering = real_steer
             client.setCarControls(car_controls)
 
-            car_data = np.append(car_data,
-                                 [[curr_pos[0], curr_pos[1], curr_rot[0],
-                                   desired_speed, car_state.speed,
-                                   desired_steer, real_steer, throttle_command]],
-                                 axis=0)
+            if save_data:
+                car_data = np.append(car_data,
+                                     [[curr_pos[0], curr_pos[1], curr_rot[0],
+                                       desired_speed, car_state.speed,
+                                       desired_steer, real_steer, throttle_command]],
+                                     axis=0)
 
     pickling_objects = {'path': follow_handler.path, 'car_data': car_data}
     if save_data:
@@ -130,10 +129,12 @@ def following_loop(client, spline_obj=None):
 
 
 if __name__ == '__main__':
+    # Create an Airsim client:
     airsim_client = airsim.CarClient()
     airsim_client.confirmConnection()
     airsim_client.enableApiControl(True)
 
+    # Instantiate a shared-memory manager and run the loop:
     steering_procedure_manager = path_control.SteeringProcManager()
     following_loop(airsim_client)
 

@@ -43,7 +43,7 @@ class StanleyFollower:
         closest_dist = np.linalg.norm(closest_vector)
         ego_rotation = np.array([[np.cos(heading), np.sin(heading)], [-np.sin(heading), np.cos(heading)]])
         ego_closest = np.matmul(ego_rotation, closest_vector)  # Closest vector in vehicle frame of reference
-        theta_f = -np.arctan(self.k_steer * closest_dist**2 / (np.abs(car_vel) + self.EPSILON))*np.sign(ego_closest[1])
+        theta_f = -np.arctan(self.k_steer * closest_dist / (np.abs(car_vel) + self.EPSILON))*np.sign(ego_closest[1])
 
         # Combine them together and saturate:
         steering_angle = np.clip(theta_e + theta_f, -self.max_steering, self.max_steering)
@@ -154,7 +154,7 @@ class SteeringProcManager:
             sample_time = 0.001
             cls.steer_emulator = DiscretePlant(sample_time, 10, 4)
             cls.steer_controller = PidfControl(sample_time)
-            cls.steer_controller.set_pidf(1000.0, 0.0, 15, 0.0)
+            cls.steer_controller.set_pidf(1000.0, 0.0, 15.0, 0.0)
             cls.steer_controller.set_extrema(0.01, 1.0)
             cls.steer_controller.alpha = 0.01
 

@@ -11,9 +11,9 @@ import path_control
 import os
 import cv2
 import struct
-import csv
 
-decimation = 30e9
+
+decimation = 30e9  # Used to save an output image every X iterations.
 
 
 def aggregate_detections(airsim_client, iterations=1):
@@ -38,10 +38,6 @@ def process_camera(lidar_to_cam, vector, camera, image, tracked_cone, idx, copy_
             bgr_color = (0, 255, 255)
         h_range, w_range, midpoint = camera.generate_cropping_indices(vector_camera)
         copy_img = cv2.rectangle(copy_img, [w_range[1], h_range[1]], [w_range[0], h_range[0]], bgr_color, 1)
-        # cv2.imshow('f', image)
-        # cv2.waitKey()
-        # a=5
-        # hsv_image, hsv_success = camera.get_cropped_hsv(image, vector_camera)
     return cone_color
 
 
@@ -49,6 +45,8 @@ def mapping_loop(client):
     global decimation
     image_dest = os.path.join(os.getcwd(), 'images')
     data_dest = os.path.join(os.getcwd(), 'recordings')
+    os.makedirs(image_dest, exist_ok=True)
+    os.makedirs(data_dest, exist_ok=True)
     save_data = False
 
     # Constant transform matrices:
@@ -70,8 +68,6 @@ def mapping_loop(client):
     pursuit_follower.k_steer = 0.5
 
     # Open access to shared memory blocks:
-    inputs = np.array([], dtype=float)
-    outputs = np.array([], dtype=float)
     shmem_active, shmem_setpoint, shmem_output = path_control.SteeringProcManager.retrieve_shared_memories()
 
     # Initialize vehicle starting point
@@ -159,7 +155,6 @@ def mapping_loop(client):
                                 # Estimate color only for active cones, within camera frustum.
                                 # Color estimation is done in the camera frame of reference.
                                 centroid_vehicle = np.matmul(lidar_to_vehicle, centroid_lidar)[:3]
-                                #TODO remove debug items from process_camera
                                 if centroid_vehicle[1] > 0:  # Positive y means left side.
                                     cone_color = process_camera(lidar_to_left_cam,
                                                                 centroid_lidar,
@@ -172,7 +167,6 @@ def mapping_loop(client):
                                                                 right_cam,
                                                                 right_image,
                                                                 curr_cone, idx, right_copy)
-
                             break
                     # If no centroid is close enough to an existing one, create a new tracker instance:
                     if not centroid_exists:
@@ -185,8 +179,6 @@ def mapping_loop(client):
 
             shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
             real_steer = struct.unpack('d', shmem_output.buf[:8])[0]
-            # inputs = np.append(inputs, desired_steer)
-            # outputs = np.append(outputs, real_steer)
 
             car_controls.steering = real_steer
             client.setCarControls(car_controls)
