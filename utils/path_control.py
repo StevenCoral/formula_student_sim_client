@@ -1,10 +1,6 @@
 from spline_utils import PathSpline
 import numpy as np
-import airsim
-from scipy.spatial.transform import Rotation as Rot
-import spatial_utils
 import time
-import pickle
 import struct
 import multiprocessing
 from multiprocessing import shared_memory
@@ -24,13 +20,14 @@ class StanleyFollower:
         self.min_velocity = 5.0  # m/s
         self.max_steering = np.deg2rad(40.0)  # radians
 
-        # Generic value:
+        # Velocity coefficient defaults to the difference between max and min speeds,
+        # divided by the maximum path curvature:
         self.k_vel = (self.max_velocity - self.min_velocity) / (self.path.curvature.max() + self.EPSILON)
         self.lookahead = 5.0  # meters
         self.k_steer = 10.0  # Stanley steering coefficient
 
     def calc_ref_speed_steering(self, car_pos, car_vel, heading):
-        # First we match the path steering angle [rad]:
+        # First we match the path's tangent angle [rad]:
         closest_idx, closest_vector, closest_tangent = self.path.find_closest_point(car_pos)
         path_direction = np.arctan2(closest_tangent[1], closest_tangent[0])
         theta_e = heading - path_direction
@@ -66,13 +63,13 @@ class PursuitFollower:
 
         self.min_lookahead = min_distance
         self.max_lookahead = max_distance
-        self.previous_angle = 0.0
+        self.previous_angle = 0.0  # Optional as fallback angle instead of moving straight ahead.
         self.k_steer = 0.5
         self.max_steering = np.deg2rad(40.0)  # Radians
         self.pursuit_points = [np.array([0.0, 0.0, 0.0])]
 
     def calc_ref_steering(self, tracked_cones, map_to_vehicle):
-        # Manage pursuit points:
+        # Manage pursuit points list:
         last_blue = None
         last_yellow = None
         for curr_cone in reversed(tracked_cones):
@@ -90,7 +87,7 @@ class PursuitFollower:
                     break
 
         # Scanning pursuit points from newest (and farthest) backwards.
-        # If the point is farther than the max lookahead distance, keep scanning.
+        # Keep scanning as long as the point is farther than the max lookahead distance.
         # If we reached a point that is too close, keep moving straight until (hopefully) a new one gets within range.
         if len(self.pursuit_points) > 2:
             for point in reversed(self.pursuit_points):
@@ -105,6 +102,7 @@ class PursuitFollower:
                 self.previous_angle = np.clip(steering_angle, -self.max_steering, self.max_steering)
             else:
                 steering_angle = 0.0
+                # steering_angle = self.previous_angle  # Optional fallback.
         else:
             steering_angle = 0.0  # Move straight if we haven't picked up any points yet.
 
@@ -126,7 +124,6 @@ class SteeringProcManager:
 
     def __init__(self):
         self.create_steering_procedure()
-        pass
 
     def __del__(self):
         self.terminate_steering_procedure()
@@ -136,6 +133,7 @@ class SteeringProcManager:
         # Everything below is hardcoded, changes can be made by adding arguments:
         if not cls.memories_exist:
             cls.memories_exist = True
+            # Create or pick up existing shared memory objects:
             try:
                 cls.shmem_active = shared_memory.SharedMemory(name='active_state', create=True, size=1)
                 cls.shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=True, size=8)
@@ -144,6 +142,8 @@ class SteeringProcManager:
                 cls.shmem_active = shared_memory.SharedMemory(name='active_state', create=False, size=1)
                 cls.shmem_setpoint = shared_memory.SharedMemory(name='input_value', create=False, size=8)
                 cls.shmem_output = shared_memory.SharedMemory(name='output_value', create=False, size=8)
+
+            # Initialize default values:
             is_active = True
             desired_steer = 0.0
             real_steer = 0.0
@@ -151,6 +151,7 @@ class SteeringProcManager:
             cls.shmem_setpoint.buf[:8] = struct.pack('d', desired_steer)
             cls.shmem_output.buf[:8] = struct.pack('d', real_steer)
 
+            # Create an emulated plant and a controller:
             sample_time = 0.001
             cls.steer_emulator = DiscretePlant(sample_time, 10, 4)
             cls.steer_controller = PidfControl(sample_time)
@@ -158,11 +159,12 @@ class SteeringProcManager:
             cls.steer_controller.set_extrema(0.01, 1.0)
             cls.steer_controller.alpha = 0.01
 
+            # Initiate a new process for steering:
             cls.steering_thread = multiprocessing.Process(target=cls.steer_emulator.async_steering,
                                                           args=(sample_time, cls.steer_controller),
                                                           daemon=True)
             cls.steering_thread.start()
-            time.sleep(1.0)  # New process takes a lot of time to "jumpstart"
+            time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
 
     @classmethod
     def retrieve_shared_memories(cls):
@@ -197,40 +199,9 @@ class SteeringProcManager:
             cls.memories_exist = False
 
 
+# The function below was not used and left for reference only:
 def calc_dead_reckoning(car_pos, car_speed, heading, yaw_rate, delta_time):
     updated_heading = heading + delta_time * yaw_rate
     updated_pos = car_pos + delta_time * car_speed * np.array([np.cos(updated_heading), np.sin(updated_heading)])
     return updated_pos, updated_heading
-
-
-if __name__ == '__main__':
-
-    # steer_controller = PidfControl(0.01)
-    # steer_controller.set_pidf(900.0, 0.0, 42.0, 0.0)
-    # steer_controller.set_extrema(0.01, 1.0)
-    # steer_controller.alpha = 0.01
-    # steer_emulator = WheelsPlant(0.01)
-    # steer_input = multiprocessing.Value('f', 0.0)
-    # steer_output = multiprocessing.Value('f', 0.0)
-    # is_active = multiprocessing.Value('B', int(1))
-    # steering_thread = multiprocessing.Process(target=steer_emulator.async_steering,
-    #                                           args=(steer_controller, steer_input, steer_output, is_active),
-    #                                           daemon=True)
-    # steering_thread.start()
-    # time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
-
-    # Airsim is stupid, always spawns at zero. Must compensate using "playerstart" in unreal:
-    starting_x = 10.0
-    starting_y = 20.0
-
-    x = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 6.00, -6.00, -19.00, -23.00, -23.00, -17.00, 0.0, 8.00])
-    y = np.array([20.00, 10.00, -10.00, -40.00, -60.00, -73.00, -78.00, -70.00, -38.00, 10.00, 30.00, 31.00, 27.00])
-
-    x -= starting_x
-    y -= starting_y
-
-    my_spline = PathSpline(x, y)
-    my_spline.generate_spline(0.1, smoothing=1)
-    follow_handler = StanleyFollower(my_spline)
-    follow_handler.k_vel *= 2.0
 

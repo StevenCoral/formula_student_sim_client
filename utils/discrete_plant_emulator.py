@@ -1,5 +1,3 @@
-
-from spline_utils import PathSpline
 import numpy as np
 from matplotlib import pyplot as plt
 from pidf_controller import PidfControl
@@ -50,20 +48,27 @@ class DiscretePlant:
         while is_active:
             iteration_time = time.perf_counter() - last_iteration
             if iteration_time > sample_time:
+                # Poll the setpoint input from shared memory:
                 setpoint = struct.unpack('d', shmem_setpoint.buf[:8])[0]
+                # Pass input and output signals through controller:
                 compensated_signal = controller.position_control(setpoint, output)
+                # Calculate the output of the plant's next iteration:
                 output = self.iterate_step(compensated_signal)
+                # Write result into shared memory:
                 shmem_output.buf[:8] = struct.pack('d', output)
+                # Check whether loop should go on:
                 is_active = struct.unpack('?', shmem_active.buf[:1])[0]
+                # Update time count for next iteration:
                 last_iteration = time.perf_counter()
 
+        # Close the process' use of the shared memory once the loop is complete:
         shmem_active.close()
         shmem_setpoint.close()
         shmem_output.close()
 
 
 def run_subprocess():
-    duration = 4.0
+    duration = 2.0
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
     # steer_emulator = DiscretePlant(0.01)
@@ -97,20 +102,20 @@ def run_subprocess():
     time.sleep(2.0)  # New process takes a lot of time to "jumpstart"
 
     try:
-        start_time = time.time()
+        start_time = time.perf_counter()
         last_iteration = time.perf_counter()
         run_time = 0.0
         idx = 0
         setpoint = 10.0
         while run_time < duration:
-            run_time = time.time() - start_time
+            run_time = time.perf_counter() - start_time
             iteration_time = time.perf_counter() - last_iteration
             if iteration_time > dt:
-                if run_time > 1.0:
+                if run_time > 0.5:
                     setpoint = -20.0
-                if run_time > 2.0:
+                if run_time > 1.0:
                     setpoint = 30.0
-                if run_time > 3.0:
+                if run_time > 1.5:
                     setpoint = -40.0
 
                 shmem_setpoint.buf[:8] = struct.pack('d', setpoint)
@@ -118,12 +123,13 @@ def run_subprocess():
 
                 inputs = np.append(inputs, setpoint)
                 outputs = np.append(outputs, output)
-                # print(iteration_time)
                 last_iteration = time.perf_counter()
                 idx += 1
 
-        is_active = False  # Stop calculating angle
+        # End parallel process loop
+        is_active = False
         shmem_active.buf[:1] = struct.pack('?', is_active)
+
         # Plot the result
         timeline = np.linspace(0, duration, idx)
         fig, ax = plt.subplots(1, 1)
@@ -142,7 +148,7 @@ def run_subprocess():
 
 
 def run_offline():
-    duration = 4.0
+    duration = 2.0
     dt = 0.001
     inputs = np.array([], dtype=float)
     outputs = np.array([], dtype=float)
@@ -158,15 +164,13 @@ def run_offline():
     setpoint = 10.0
     output = 0.0
     idx = 0
-    current_time = time.time()
 
-    while idx < duration / dt:
-
-        if idx > 1.0 / dt:
+    while idx * dt < duration:
+        if idx * dt > 0.5:
             setpoint = -20.0
-        if idx > 2.0 / dt:
+        if idx * dt > 1.0:
             setpoint = 30.0
-        if idx > 3.0 / dt:
+        if idx * dt > 1.5:
             setpoint = -40.0
 
         compensated_signal = steer_controller.position_control(setpoint, output)
@@ -189,10 +193,9 @@ def run_offline():
     ax.plot(timeline, outputs, '-b')
     ax.grid(True)
     fig.show()
-    a=5
     plt.waitforbuttonpress()
 
 
 if __name__ == '__main__':
-    # run_subprocess()
-    run_offline()
+    run_subprocess()
+    # run_offline()

@@ -1,7 +1,6 @@
 import numpy as np
 import spatial_utils
 import cv2
-from matplotlib import pyplot as plt
 
 
 class AirsimCamera:
@@ -40,7 +39,7 @@ class AirsimCamera:
     def generate_cropping_indices(self, vector):
         pixel, dist = self.project_vector_to_pixel(vector)
         pixel = np.round(pixel).astype(np.int32)
-        numpy_indices = np.flip(pixel)
+        numpy_indices = np.flip(pixel)  # Changing image and matrix dimension order.
         # Heuristic, half-size of desired rectangle bounds:
         rect_h = np.round(self.HEIGHT_DIST_COEFF / dist).astype(np.int32)
         rect_w = np.round(self.WIDTH_DIST_COEFF / dist).astype(np.int32)
@@ -60,7 +59,6 @@ class AirsimCamera:
             return np.empty(shape=(1, 1)), False
 
 
-
 def get_bgr_image(airsim_response):
     # Acquire and reshape image:
     image = np.frombuffer(airsim_response.image_data_uint8, dtype=np.uint8).reshape(airsim_response.height,
@@ -73,24 +71,6 @@ def save_img(airsim_response, file_path):
     # Acquire and reshape image:
     image = get_bgr_image(airsim_response)
 
-    # Write to file
+    # Write to file. If destination folder does not exist, this line will do nothing:
     cv2.imwrite(file_path, image)
 
-
-def dump(image):
-    pass
-
-    # pixel, dist = left_cam.project_vector_to_pixel(curr_centroid)
-    # pixel = np.round(pixel).astype(np.uint32)
-    # indices = np.flip(pixel)
-    # rect_h = np.round(40 / dist).astype(np.uint32)  # Heuristic, half-size of desired rectangle height
-    # rect_w = np.round(30 / dist).astype(np.uint32)  # Heuristic, half-size of desired rectangle width
-    # cropped_img = left_cv_img[indices[0]-rect_h:indices[0]+rect_h, indices[1]-rect_w:indices[1]+rect_w, :]
-    # # cropped_img = right_cv_img[250:260, 170:176, :]
-    # hsv_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2HSV)
-    # hsv_size = hsv_img.shape[0] * hsv_img.shape[1]
-    # hue_histogram = cv2.calcHist(hsv_img, [0], None, [180], [0, hsv_size])
-    # plt.hist(hsv_img[:, :, 0].flatten(), 180)
-    # plt.show()
-    # rect_extent = np.array([rect_w, rect_h], dtype=np.uint32)
-    # left_cv_img = cv2.rectangle(left_cv_img, pixel-rect_extent, pixel+rect_extent, (0, 0, 255), 1)

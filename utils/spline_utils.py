@@ -44,12 +44,13 @@ class PathSpline:
 
     def _calculate_spline(self, num_idx, smoothing=0):
         # Fits splines to x=f(u) and y=g(u), treating both as periodic. Also note that s=0
-        # is needed in order to force the spline fit to pass through all the input points.
+        # is used only to force the spline fit to pass through all the input points.
         tck, u = interpolate.splprep([self.xb, self.yb], s=smoothing, per=True, quiet=1)
 
-        # Evaluate the spline fits for 10000 evenly spaced distance values
+        # Evaluate the spline fits for 10000 evenly spaced distance values:
         xi, yi = interpolate.splev(np.linspace(0, 1, num_idx), tck)
 
+        # Evaluate the curvature for each and every point:
         ci = np.zeros(num_idx)
         for idx in range(num_idx - 2):
             if idx == 0:
@@ -68,7 +69,6 @@ class PathSpline:
     def find_closest_point(self, target_point):
         # Finding the closest point using "brute force", no optimization.
         # Minimum for norm will be minimum for norm squared as well, dropping the sqrt():
-
         distances = (self.xi - target_point[0])**2 + (self.yi - target_point[1])**2
         closest_idx = distances.argmin()
         if closest_idx == 0:
@@ -84,7 +84,8 @@ class PathSpline:
         closest_vector = np.array([self.xi[closest_idx] - target_point[0], self.yi[closest_idx] - target_point[1]])
         closest_tangent = np.array([self.xi[next_idx] - self.xi[prev_idx], self.yi[next_idx] - self.yi[prev_idx]])
         if np.linalg.norm(closest_tangent) > 1e-6:
-            closest_tangent /= np.linalg.norm(closest_tangent)  # Length 1
+            closest_tangent /= np.linalg.norm(closest_tangent)  # Normalize to a length of 1
+        # else ?
 
         return closest_idx, closest_vector, closest_tangent
 
@@ -95,12 +96,13 @@ class PathSpline:
         base_angle = np.arccos(np.dot(prev_unit_vec, next_unit_vec))
         base_length = np.linalg.norm(next_p - prev_p)
         curvature = 2 * np.sin(base_angle) / base_length
-        if curvature < 1e-3:  # Meaningless value for our purpose
+        if curvature < 1e-4:  # Meaningless value for our purpose
             curvature = 0
         return curvature
 
 
 def generate_path_points(mapping_data):
+    # Uses the list of tracked cones in order to generate a valid spline:
     left_points = np.ndarray(shape=(0, 2))
     right_points = np.ndarray(shape=(0, 2))
     unknown_points = np.ndarray(shape=(0, 2))
@@ -112,7 +114,7 @@ def generate_path_points(mapping_data):
             elif tracked_obj.color == tracker_utils.ConeTracker.COLOR_YELLOW:
                 right_points = np.append(right_points, point.reshape(1, 2), axis=0)
             else:
-                # Qualify unknown cones as the closest color
+                # Qualify unknown cones as the closest color (potentially dangerous):
                 left_dist = np.linalg.norm(left_points - point, axis=1)
                 right_dist = np.linalg.norm(right_points - point, axis=1)
                 if np.min(left_dist) < np.min(right_dist):
@@ -127,34 +129,3 @@ def generate_path_points(mapping_data):
 
     return track_points
 
-
-if __name__ == "__main__":
-    # x = np.array([21.00, 21.00, 15.00, 5.00, -5.00, -10.00, -9.00, -5.00, 2.00, 4.00, 1.00, -6.00, -10.00, -10.00,
-    #               -7.00, 0.0, 4.00, 5.00, 3.00, -5.00, -10.00, -9.00, 0.0, 14.00, 20.00, 21.00])
-    # y = np.array([-15.00, -30.00, -40.00, -44.00, -42.00, -35.00, -30.00, -27.00, -25.00, -20.00, -16.00, -15.00,
-    #               -12.00, -9.00, -6.00, -5.00, -4.00, 0.0, 5.00, 7.00, 11.00, 17.00, 20.00, 15.00, 5.00, -10.00])
-    # y *= -1
-
-    x = np.array([10.00, 10.00, 10.00, 10.00, 10.00, 5.00, -18.00, -23.00, -23.00, -17.00, 0.0, 8.00])
-    y = np.array([20.00, 10.00, -10.00, -40.00, -60.00, -71.00, -70.00, -38.00, 10.00, 30.00, 31.00, 27.00])
-    y *= -1
-
-    my_spline = PathSpline(x, y)
-    my_spline.generate_spline(0.1)
-
-    cc = my_spline.curvature * 100.0
-    some_point = [21, 14.99]
-    close_idx, close_dist, close_tangent = my_spline.find_closest_point(some_point)
-    print(close_idx, close_dist, close_tangent)
-
-    # plot the result
-    fig, ax = plt.subplots(1, 1)
-    # ax.plot(x, y, 'or')
-    ax.plot(my_spline.xi, my_spline.yi, '.b')
-    ax.plot(some_point[0], some_point[1], 'or')
-    ax.plot(my_spline.xi[close_idx], my_spline.yi[close_idx], 'og')
-    # ax.plot(np.linspace(-10, 20, len(cc)), cc, '-g')
-    ax.grid(True)
-    ax.axis('equal')
-    fig.show()
-    pass

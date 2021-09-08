@@ -1,11 +1,7 @@
 import numpy as np
-from scipy.spatial.transform import Rotation as Rot
-import time
-import pickle
-import csv
-from matplotlib import pyplot as plt
-from sklearn.cluster import DBSCAN
 
+
+# The actual DBSCAN is performed outside of this module.
 
 def filter_cloud(pointcloud, min_distance=0.0, max_distance=100.0, min_height=-1.0, max_height=1.0):
     distances = np.linalg.norm(pointcloud, axis=1)

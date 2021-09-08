@@ -1,5 +1,4 @@
 import numpy as np
-import cv2
 
 
 class ObjectTracker:
@@ -45,6 +44,7 @@ class ConeTracker(ObjectTracker):
     COLOR_BLUE = 1
     COLOR_YELLOW = 2
 
+    # Values measured in a separate procedure:
     HUE_MIN_BLUE = 107
     HUE_MAX_BLUE = 111
     SAT_MIN_BLUE = 200
@@ -99,7 +99,7 @@ def compare_trackers(centroid_pos, tracker_list):
 # For use outside of the class:
 def estimate_cone_color(hsv_image):
     histogram = ConeTracker.generate_histogram(hsv_image)
-    # Integrating histogram counts of blue and yellow:
+    # Summing histogram counts of blue and yellow:
     blue_score = np.sum(histogram[ConeTracker.HUE_MIN_BLUE:ConeTracker.HUE_MAX_BLUE])
     yellow_score = np.sum(histogram[ConeTracker.HUE_MIN_YELLOW:ConeTracker.HUE_MAX_YELLOW])
     if blue_score > yellow_score:
@@ -122,4 +122,3 @@ if __name__ == "__main__":
     for idx in range(11):
         tracker_test.process_detection(np.array([2]))
         print(idx, tracker_test.position)
-

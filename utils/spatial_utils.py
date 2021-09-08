@@ -34,8 +34,8 @@ def convert_unreal_airsim(pos, rot):
     return pos, rot
 
 
+# Convert from engineering to camera coordinate systems without messing with rotation matrix calculations.
 def eng_to_camera(pos):
-    # Converts from engineering to camera coordinate systems without messing with rotation matrix calculations.
     new_pos = np.array([-pos[1], -pos[2], pos[0]])
     return new_pos
 
@@ -47,6 +47,7 @@ def camera_to_eng(pos):
 
 def set_airsim_pose(airsim_client, desired_position, desired_rot, inherit_z=True):
     # Input is in ENG coordinate system!
+    # Both desired position and rotation must have 3 elements: [x,y,z] and [yaw,pitch,roll].
     # Converts to Airsim and sends to client.
 
     desired_position = np.array(desired_position)  # To accept lists as well.
@@ -56,7 +57,10 @@ def set_airsim_pose(airsim_client, desired_position, desired_rot, inherit_z=True
     if inherit_z:
         desired_position = np.append(desired_position, -initial_pose.position.z_val)
 
+    # Convert to Airsim coordinate system:
     pos, rot = convert_eng_airsim(desired_position, desired_rot)
+
+    # Convert Euler angles to a quaternion:
     rotator = Rotation.from_euler('ZYX', rot, degrees=True)
     quat = rotator.as_quat()
     initial_pose.orientation.x_val = quat[0]
@@ -66,6 +70,8 @@ def set_airsim_pose(airsim_client, desired_position, desired_rot, inherit_z=True
     initial_pose.position.x_val = pos[0]
     initial_pose.position.y_val = pos[1]
     initial_pose.position.z_val = pos[2]
+
+    # Send results to client:
     airsim_client.simSetVehiclePose(initial_pose, ignore_collision=True)
 
 
@@ -132,6 +138,6 @@ if __name__ == "__main__":
 
     set_airsim_pose(client, [0.0, 20.0], [45.0, 0, 0])
     test_pose = client.simGetVehiclePose()
-    tf_mat = tf_matrix_from_airsim_pose(test_pose)
-    tf_2 = tf_matrix_from_eng_pose([1, 2, 3], 40, 20)
+    tf_mat = tf_matrix_from_airsim_pose([1, 2, 3], [40, 0, 0])
+    tf_2 = tf_matrix_from_eng_pose([1, 2, 3], [40, 0, 0])
     pass

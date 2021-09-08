@@ -1,4 +1,5 @@
-#
+# Not based upon any imports
+
 def filter_value(current_val, previous_val, alpha):
     return previous_val * alpha + current_val * (1.0-alpha)
 
