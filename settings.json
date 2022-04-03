@@ -1,0 +1,157 @@
+{
+  "SettingsVersion": 1.2,
+  "SimMode": "Car",
+  "ClockType": "",
+  "ClockSpeed": 1,
+  "LocalHostIp": "127.0.0.1",
+  "ApiServerPort": 41451,
+  "RecordUIVisible": true,
+  "LogMessagesVisible": true,
+  "ViewMode": "SpringArmChase",
+  "RpcEnabled": true,
+  "EngineSound": false,
+  "SpeedUnitFactor": 1.0,
+  "SpeedUnitLabel": "m/s",
+  "Wind": { "X": 0, "Y": 0, "Z": 0 },
+  "Recording": {
+    "RecordOnMove": false,
+    "RecordInterval": 0.05,
+    "Folder": "",
+    "Enabled": false,
+    "Cameras": [
+        { "CameraName": "0", "ImageType": 0, "PixelsAsFloat": false,  "VehicleName": "", "Compress": true }
+    ]
+  },
+  "CameraDefaults": {
+    "CaptureSettings": [
+      {
+        "ImageType": 0,
+        "Width": 360,
+        "Height": 240,
+        "FOV_Degrees": 90,
+        "AutoExposureSpeed": 100,
+        "AutoExposureBias": 0,
+        "AutoExposureMaxBrightness": 0.64,
+        "AutoExposureMinBrightness": 0.03,
+        "MotionBlurAmount": 0,
+        "TargetGamma": 1.2,
+        "ProjectionMode": "",
+        "OrthoWidth": 5.12
+      }
+    ],
+    "NoiseSettings": [
+      {
+        "Enabled": false,
+        "ImageType": 0,
+
+        "RandContrib": 0.2,
+        "RandSpeed": 100000.0,
+        "RandSize": 500.0,
+        "RandDensity": 2,
+
+        "HorzWaveContrib":0.03,
+        "HorzWaveStrength": 0.08,
+        "HorzWaveVertSize": 1.0,
+        "HorzWaveScreenSize": 1.0,
+
+        "HorzNoiseLinesContrib": 1.0,
+        "HorzNoiseLinesDensityY": 0.01,
+        "HorzNoiseLinesDensityXY": 0.5,
+
+        "HorzDistortionContrib": 1.0,
+        "HorzDistortionStrength": 0.002
+      }
+    ],
+    "Gimbal": {
+      "Stabilization": 0,
+      "Pitch": 0, "Roll": 0, "Yaw": 0
+    },
+    "X": 0, "Y": 0, "Z": 0,
+    "Pitch": 0, "Roll": 0, "Yaw": 0
+  },
+  "OriginGeopoint": {
+    "Latitude": 47.641468,
+    "Longitude": -122.140165,
+    "Altitude": 122
+  },
+  "TimeOfDay": {
+    "Enabled": false,
+    "StartDateTime": "",
+    "CelestialClockSpeed": 1,
+    "StartDateTimeDst": false,
+    "UpdateIntervalSecs": 60
+  },
+  "SubWindows": [
+    {"WindowID": 0, "CameraName": "LeftCam", "ImageType": 0, "Visible": false},
+    {"WindowID": 1, "CameraName": "RightCam", "ImageType": 0, "Visible": false},
+    {"WindowID": 2, "CameraName": "0", "ImageType": 0, "Visible": false}
+  ],
+  "SegmentationSettings": {
+    "InitMethod": "",
+    "MeshNamingMethod": "",
+    "OverrideExisting": false
+  },
+  "PawnPaths": {
+    "BareboneCar": {"PawnBP": "Class'/AirSim/VehicleAdv/Vehicle/VehicleAdvPawn.VehicleAdvPawn_C'"},
+    "SuvCar": {"PawnBP": "Class'/AirSim/VehicleAdv/SUV/SuvCarPawn.SuvCarPawn_C'"},
+	"DefaultCar": {"PawnBP":"Class'/Game/Develop/Vehicles/FormulaOne/BP_FormulaOneAirsim.BP_FormulaOneAirsim_C'"},
+    "DefaultQuadrotor": {"PawnBP": "Class'/AirSim/Blueprints/BP_FlyingPawn.BP_FlyingPawn_C'"},
+    "DefaultComputerVision": {"PawnBP": "Class'/AirSim/Blueprints/BP_ComputerVisionPawn.BP_ComputerVisionPawn_C'"}
+  },
+  "Vehicles": {
+    "PhysXCar": {
+      "VehicleType": "PhysXCar",
+      "DefaultVehicleState": "",
+      "AutoCreate": true,
+      "PawnPath": "",
+      "EnableCollisionPassthrogh": false,
+      "EnableCollisions": true,
+      "RC": {
+        "RemoteControlID": -1
+       },
+	    "Sensors": {
+                "FrontLidar": {
+                    "SensorType": 6,
+                    "Enabled" : true,
+                    "NumberOfChannels": 2,
+                    "RotationsPerSecond": 20,
+                    "PointsPerSecond": 50000,
+                    "X": 2, "Y": 0, "Z": -0.1,
+                    "Roll": 0, "Pitch": 0, "Yaw" : 0,
+                    "VerticalFOVUpper": 1,
+                    "VerticalFOVLower": 0,
+                    "HorizontalFOVStart": -90,
+                    "HorizontalFOVEnd": 90,
+                    "DrawDebugPoints": false,
+                    "DataFrame": "SensorLocalFrame"
+                }
+		},
+       "Cameras": {
+			"LeftCam": {
+				"CaptureSettings":
+				  [{
+					"ImageType": 0,
+					"Width": 640,
+					"Height": 360,
+					"FOV_Degrees": 70
+				  }],
+				"X": 2, "Y": -0.5, "Z": -0.5,
+				"Pitch": -10, "Roll": 0, "Yaw": -40
+			},
+			"RightCam": {
+				"CaptureSettings":
+				  [{
+					"ImageType": 0,
+					"Width": 640,
+					"Height": 360,
+					"FOV_Degrees": 70
+				  }],
+				"X": 2, "Y": 0.5, "Z": -0.5,
+				"Pitch": -10, "Roll": 0, "Yaw": 40
+			}
+	  },
+      "X": 0, "Y": 0, "Z": 0,
+      "Pitch": 0, "Roll": 0, "Yaw": 0
+    }
+  }
+}
