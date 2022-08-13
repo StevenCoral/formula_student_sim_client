@@ -4,6 +4,7 @@ import airsim
 import spline_utils
 import path_control
 
+
 if __name__ == '__main__':
     # Create an airsim client instance:
     steering_procedure_manager = path_control.SteeringProcManager()
