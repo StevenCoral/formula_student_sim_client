@@ -8,21 +8,21 @@ For (much) more details, please review the project PDF file included in the repo
 
 ## Preparation
 In order to install and use this project, you should:  
-* Install Unreal Engine using formal instructions.
+* Install Unreal Engine 4.26.2 using formal instructions.
 * Download Unreal Project (zip file) from the [following link](https://drive.google.com/drive/folders/1_BdXtkc-P8FzvNqy38et9genC3dfL_1K?usp=sharing "project files location").
 * Install Airsim using formal instructions (binaries should already exist under the project plugins).
 * Recommended: create a Python Virtual Environment for this project (Venv / Anaconda / else).
-* Type "pip install wheel".
+* In a command-prompt, with virtual environment activated, type "pip install wheel".
 * pip-install the rest of the dependencies within the provided "requirements.txt" file.
 * Recommended: create a Pycharm project in the repo folder.
 * Mark the "utils" subfolder as Sources Root or add it to Python path in-code using sys.
-* Copy "settins.json" into <Documents>/Airsim folder, backup and overwrite if needed.
-* Open StudentRacing project in UE 4.26 and make sure Airsim plugin is enabled.
+* Copy "settings.json" into Documents/Airsim folder, backup and overwrite if needed.
+* Open StudentRacing project in Unreal and make sure Airsim plugin is enabled.
 * Click on "Play" and **wait for all shaders to compile**.
-* Play the project and then run "main_program.py" script.
+* Play the project and then run the "main_program.py" script in Pycharm/Python.
 
 ## Usage
-The main program is made of 2 main missions:  
+The main program is made of 2 high-level missions:  
 1. Discovering cones using LIDAR and classifying them using the cameras and saving their location.  
 2. Generating a path spline from the positions of the discovered cones.  
 3. Closing a control loop over a spline, given said spline.  
